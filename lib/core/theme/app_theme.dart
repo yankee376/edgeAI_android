@@ -17,9 +17,7 @@ class AppTheme {
       ),
       cardTheme: CardThemeData(
         color: const Color(0xFF16161A),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );
   }

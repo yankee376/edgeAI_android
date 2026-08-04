@@ -1,8 +1,12 @@
-import 'dart:typed_data';
+import 'dart:typed_data' as typed;
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import '../../ai_engine/domain/ai_inference_result.dart';
+import 'package:image/image.dart' as img;
+
+import '../../ai_engine/domain/detection.dart';
 import '../../ai_engine/services/ai_engine_service.dart';
+import 'detection_painter.dart';
 
 class CameraScreen extends StatefulWidget {
   final List<CameraDescription> cameras;
@@ -11,6 +15,22 @@ class CameraScreen extends StatefulWidget {
 
   @override
   State<CameraScreen> createState() => _CameraScreenState();
+}
+
+class _CapturedDetectionResult {
+  final typed.Uint8List imageBytes;
+  final int imageWidth;
+  final int imageHeight;
+  final List<Detection> detections;
+  final double inferenceTimeMs;
+
+  const _CapturedDetectionResult({
+    required this.imageBytes,
+    required this.imageWidth,
+    required this.imageHeight,
+    required this.detections,
+    required this.inferenceTimeMs,
+  });
 }
 
 class _CameraScreenState extends State<CameraScreen> {
@@ -22,19 +42,21 @@ class _CameraScreenState extends State<CameraScreen> {
   String? _errorMessage;
   int _engineVersion = -1;
   bool _hasVulkan = false;
-  AIInferenceResultModel? lastResult;
+  bool _isModelLoading = false;
+  bool _isModelLoaded = false;
+  bool _isDetecting = false;
+  _CapturedDetectionResult? _result;
 
   @override
   void initState() {
     super.initState();
     _engineVersion = _aiEngineService.getVersion();
     _hasVulkan = _aiEngineService.hasVulkanGPU();
+
     if (widget.cameras.isNotEmpty) {
       _initCamera(_selectedCameraIndex);
     } else {
-      setState(() {
-        _errorMessage = 'Không tìm thấy camera nào trên thiết bị.';
-      });
+      _errorMessage = 'Không tìm thấy camera nào trên thiết bị.';
     }
   }
 
@@ -44,7 +66,12 @@ class _CameraScreenState extends State<CameraScreen> {
     setState(() {
       _isInitialized = false;
       _errorMessage = null;
+      _result = null;
     });
+
+    final previousController = _controller;
+    _controller = null;
+    await previousController?.dispose();
 
     final camera = widget.cameras[cameraIndex];
     final controller = CameraController(
@@ -55,29 +82,128 @@ class _CameraScreenState extends State<CameraScreen> {
 
     try {
       await controller.initialize();
-      if (!mounted) return;
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
 
       setState(() {
         _controller = controller;
         _isInitialized = true;
       });
-    } catch (e) {
+    } catch (error) {
+      await controller.dispose();
       if (!mounted) return;
       setState(() {
-        _errorMessage = 'Lỗi khởi tạo Camera: $e';
+        _errorMessage = 'Lỗi khởi tạo camera: $error';
       });
     }
   }
 
-  void _switchCamera() {
-    if (widget.cameras.length < 2) return;
+  Future<void> _switchCamera() async {
+    if (widget.cameras.length < 2 || _isDetecting) return;
     _selectedCameraIndex = (_selectedCameraIndex + 1) % widget.cameras.length;
-    _controller?.dispose();
-    _initCamera(_selectedCameraIndex);
+    await _initCamera(_selectedCameraIndex);
+  }
+
+  Future<void> _loadModel() async {
+    if (_isModelLoading || !_aiEngineService.isNativeLoaded) return;
+
+    setState(() {
+      _isModelLoading = true;
+    });
+
+    final loaded = await _aiEngineService.initializeModel(preferGpu: false);
+    if (!mounted) return;
+
+    setState(() {
+      _isModelLoading = false;
+      _isModelLoaded = loaded;
+    });
+
+    final message = loaded
+        ? 'NanoDet đã load bằng ${_aiEngineService.modelBackendName}'
+        : 'Không load được NanoDet. Mã lỗi: ${_aiEngineService.lastModelLoadCode}';
+    _showMessage(message);
+  }
+
+  Future<void> _captureAndDetect() async {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized || _isDetecting) {
+      return;
+    }
+
+    if (!_aiEngineService.isModelLoaded) {
+      _showMessage('Hãy nhấn “Load NanoDet” trước.');
+      return;
+    }
+
+    setState(() {
+      _isDetecting = true;
+    });
+
+    try {
+      final photo = await controller.takePicture();
+      final jpegBytes = await photo.readAsBytes();
+      final decoded = img.decodeImage(jpegBytes);
+      if (decoded == null) {
+        throw StateError('Không giải mã được ảnh camera.');
+      }
+
+      final oriented = img.bakeOrientation(decoded);
+      final rgbBytes = oriented.getBytes(order: img.ChannelOrder.rgb);
+      final batch = _aiEngineService.detectRgb(
+        rgbBytes: rgbBytes,
+        width: oriented.width,
+        height: oriented.height,
+      );
+
+      final displayBytes = typed.Uint8List.fromList(
+        img.encodeJpg(oriented, quality: 90),
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _result = _CapturedDetectionResult(
+          imageBytes: displayBytes,
+          imageWidth: oriented.width,
+          imageHeight: oriented.height,
+          detections: batch.detections,
+          inferenceTimeMs: batch.inferenceTimeMs,
+        );
+      });
+
+      _showMessage(
+        'Tìm thấy ${batch.detections.length} vật thể trong '
+        '${batch.inferenceTimeMs.toStringAsFixed(1)} ms',
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Capture/detection failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) {
+        _showMessage('Nhận diện thất bại: $error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDetecting = false;
+        });
+      }
+    }
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text(message), duration: const Duration(seconds: 3)),
+      );
   }
 
   @override
   void dispose() {
+    _aiEngineService.unloadModel();
     _controller?.dispose();
     super.dispose();
   }
@@ -91,7 +217,7 @@ class _CameraScreenState extends State<CameraScreen> {
           children: [
             Icon(Icons.memory, color: Color(0xFF7F5AF0)),
             SizedBox(width: 8),
-            Text('Android AI Gateway (NCNN)'),
+            Text('EdgeAI NanoDet'),
           ],
         ),
         actions: [
@@ -99,7 +225,7 @@ class _CameraScreenState extends State<CameraScreen> {
             IconButton(
               icon: const Icon(Icons.switch_camera),
               onPressed: _switchCamera,
-              tooltip: 'Đổi Camera',
+              tooltip: 'Đổi camera',
             ),
         ],
       ),
@@ -111,7 +237,7 @@ class _CameraScreenState extends State<CameraScreen> {
     if (_errorMessage != null) {
       return Center(
         child: Padding(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.all(16),
           child: Text(
             _errorMessage!,
             textAlign: TextAlign.center,
@@ -128,7 +254,7 @@ class _CameraScreenState extends State<CameraScreen> {
           children: [
             CircularProgressIndicator(),
             SizedBox(height: 16),
-            Text('Đang kết nối Camera & NCNN Engine...'),
+            Text('Đang kết nối camera và NCNN...'),
           ],
         ),
       );
@@ -136,7 +262,6 @@ class _CameraScreenState extends State<CameraScreen> {
 
     return Column(
       children: [
-        // Camera Viewport
         Expanded(
           child: Stack(
             children: [
@@ -144,120 +269,154 @@ class _CameraScreenState extends State<CameraScreen> {
                 margin: const EdgeInsets.all(12),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(16),
-                  child: Center(
-                    child: CameraPreview(_controller!),
-                  ),
+                  child: _buildViewport(),
                 ),
               ),
-              // NCNN Status Overlay Banner
-              Positioned(
-                top: 24,
-                left: 24,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withAlpha(190),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: _aiEngineService.isNativeLoaded
-                          ? const Color(0xFF2CB67D)
-                          : const Color(0xFFFF5470),
-                      width: 1.5,
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            _aiEngineService.isNativeLoaded
-                                ? Icons.check_circle
-                                : Icons.warning,
-                            size: 16,
-                            color: _aiEngineService.isNativeLoaded
-                                ? const Color(0xFF2CB67D)
-                                : const Color(0xFFFF5470),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            _aiEngineService.isNativeLoaded
-                                ? 'NCNN Core v$_engineVersion (Loaded)'
-                                : 'NCNN Engine (Not Loaded)',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _hasVulkan ? '⚡ Vulkan GPU Acceleration: Enabled' : '💻 Compute Mode: CPU Only',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: _hasVulkan ? Colors.amberAccent : Colors.white70,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+              Positioned(top: 24, left: 24, child: _buildStatusBanner()),
             ],
           ),
         ),
-
-        // AI Control & Diagnostic Bar
-        Container(
-          padding: const EdgeInsets.all(16),
-          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Chip(
-                avatar: const Icon(Icons.videocam, size: 16),
-                label: Text(widget.cameras[_selectedCameraIndex].name),
-              ),
-              ElevatedButton.icon(
-                onPressed: _aiEngineService.isNativeLoaded
-                    ? () {
-                        final dummyBytes = Uint8List(640 * 480 * 3);
-                        final result = _aiEngineService.processFrame(
-                          bytes: dummyBytes,
-                          width: 640,
-                          height: 480,
-                          format: 0,
-                        );
-                        setState(() {
-                          lastResult = result;
-                        });
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'NCNN Mat Processed (${result.width}x${result.height}) | Latency: ${result.inferenceTimeMs.toStringAsFixed(2)}ms',
-                            ),
-                            duration: const Duration(seconds: 2),
-                          ),
-                        );
-                      }
-                    : null,
-                icon: const Icon(Icons.flash_on),
-                label: const Text('Test NCNN'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF7F5AF0),
-                  foregroundColor: Colors.white,
-                ),
-              ),
-            ],
-          ),
-        ),
+        _buildControlPanel(),
       ],
+    );
+  }
+
+  Widget _buildViewport() {
+    final result = _result;
+    if (result == null) {
+      return Center(child: CameraPreview(_controller!));
+    }
+
+    return Center(
+      child: AspectRatio(
+        aspectRatio: result.imageWidth / result.imageHeight,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.memory(result.imageBytes, fit: BoxFit.fill),
+            CustomPaint(
+              painter: DetectionPainter(
+                detections: result.detections,
+                imageWidth: result.imageWidth,
+                imageHeight: result.imageHeight,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusBanner() {
+    final result = _result;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.black.withAlpha(190),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: _aiEngineService.isNativeLoaded
+              ? const Color(0xFF2CB67D)
+              : const Color(0xFFFF5470),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _aiEngineService.isNativeLoaded
+                ? 'NCNN v$_engineVersion • ${_isModelLoaded ? _aiEngineService.modelBackendName : 'model chưa load'}'
+                : 'Native library chưa load',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            result == null
+                ? (_hasVulkan ? 'Thiết bị có Vulkan' : 'Chế độ CPU')
+                : '${result.detections.length} vật thể • ${result.inferenceTimeMs.toStringAsFixed(1)} ms',
+            style: const TextStyle(color: Colors.white70, fontSize: 11),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildControlPanel() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        runAlignment: WrapAlignment.center,
+        spacing: 12,
+        runSpacing: 10,
+        children: [
+          Chip(
+            avatar: const Icon(Icons.videocam, size: 16),
+            label: Text(widget.cameras[_selectedCameraIndex].name),
+          ),
+          ElevatedButton.icon(
+            onPressed: _isModelLoading || _isDetecting ? null : _loadModel,
+            icon: _isModelLoading
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(_isModelLoaded ? Icons.check_circle : Icons.memory),
+            label: Text(
+              _isModelLoading
+                  ? 'Đang load...'
+                  : _isModelLoaded
+                  ? 'NanoDet Loaded'
+                  : 'Load NanoDet',
+            ),
+          ),
+          ElevatedButton.icon(
+            onPressed: _isDetecting
+                ? null
+                : _result == null
+                ? _captureAndDetect
+                : () {
+                    setState(() {
+                      _result = null;
+                    });
+                  },
+            icon: _isDetecting
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(
+                    _result == null
+                        ? Icons.center_focus_strong
+                        : Icons.camera_alt,
+                  ),
+            label: Text(
+              _isDetecting
+                  ? 'Đang nhận diện...'
+                  : _result == null
+                  ? 'Nhận diện'
+                  : 'Quay lại camera',
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF7F5AF0),
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
