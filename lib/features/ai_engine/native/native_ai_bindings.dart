@@ -91,7 +91,50 @@ typedef DartDetectRgbImage =
       int maxOutput,
       ffi.Pointer<ffi.Float> inferenceTimeMs,
     );
+typedef CLoadCurrencyModel =
+    ffi.Int32 Function(
+      ffi.Pointer<ffi.Char> paramPath,
+      ffi.Pointer<ffi.Char> binPath,
+      ffi.Int32 useGpu,
+    );
+typedef DartLoadCurrencyModel =
+    int Function(
+      ffi.Pointer<ffi.Char> paramPath,
+      ffi.Pointer<ffi.Char> binPath,
+      int useGpu,
+    );
 
+typedef CIsCurrencyModelLoaded = ffi.Int32 Function();
+typedef DartIsCurrencyModelLoaded = int Function();
+
+typedef CGetCurrencyBackend = ffi.Int32 Function();
+typedef DartGetCurrencyBackend = int Function();
+
+typedef CUnloadCurrencyModel = ffi.Void Function();
+typedef DartUnloadCurrencyModel = void Function();
+
+typedef CDetectCurrencyImage =
+    ffi.Int32 Function(
+      ffi.Pointer<ffi.Uint8> rgbBytes,
+      ffi.Int32 width,
+      ffi.Int32 height,
+      ffi.Float probabilityThreshold,
+      ffi.Float nmsThreshold,
+      ffi.Pointer<NativeDetection> output,
+      ffi.Int32 maxOutput,
+      ffi.Pointer<ffi.Float> inferenceTimeMs,
+    );
+typedef DartDetectCurrencyImage =
+    int Function(
+      ffi.Pointer<ffi.Uint8> rgbBytes,
+      int width,
+      int height,
+      double probabilityThreshold,
+      double nmsThreshold,
+      ffi.Pointer<NativeDetection> output,
+      int maxOutput,
+      ffi.Pointer<ffi.Float> inferenceTimeMs,
+    );
 typedef CProcessImageFrame =
     NativeAIInferenceResult Function(
       ffi.Pointer<ffi.Uint8> imageBytes,
@@ -118,6 +161,11 @@ class NativeAIBindings {
   late final DartUnloadNanoDetModel _unloadNanoDetModel;
   late final DartDetectRgbImage _detectRgbImage;
   late final DartProcessImageFrame _processImageFrame;
+  late final DartLoadCurrencyModel _loadCurrencyModel;
+  late final DartIsCurrencyModelLoaded _isCurrencyModelLoaded;
+  late final DartGetCurrencyBackend _getCurrencyBackend;
+  late final DartUnloadCurrencyModel _unloadCurrencyModel;
+  late final DartDetectCurrencyImage _detectCurrencyImage;
 
   bool _isLoaded = false;
 
@@ -162,6 +210,25 @@ class NativeAIBindings {
           .asFunction();
       _processImageFrame = _nativeLib
           .lookup<ffi.NativeFunction<CProcessImageFrame>>('process_image_frame')
+          .asFunction();
+      _loadCurrencyModel = _nativeLib
+          .lookup<ffi.NativeFunction<CLoadCurrencyModel>>('load_currency_model')
+          .asFunction();
+      _isCurrencyModelLoaded = _nativeLib
+          .lookup<ffi.NativeFunction<CIsCurrencyModelLoaded>>(
+            'is_currency_model_loaded',
+          )
+          .asFunction();
+      _getCurrencyBackend = _nativeLib
+          .lookup<ffi.NativeFunction<CGetCurrencyBackend>>('get_currency_backend')
+          .asFunction();
+      _unloadCurrencyModel = _nativeLib
+          .lookup<ffi.NativeFunction<CUnloadCurrencyModel>>(
+            'unload_currency_model',
+          )
+          .asFunction();
+      _detectCurrencyImage = _nativeLib
+          .lookup<ffi.NativeFunction<CDetectCurrencyImage>>('detect_currency_image')
           .asFunction();
 
       _isLoaded = true;
@@ -238,5 +305,51 @@ class NativeAIBindings {
       throw StateError('Native AI library is not loaded');
     }
     return _processImageFrame(bytes, width, height, format);
+  }
+  int loadCurrencyModel(
+    ffi.Pointer<ffi.Char> paramPath,
+    ffi.Pointer<ffi.Char> binPath,
+    bool useGpu,
+  ) {
+    if (!_isLoaded) return -100;
+    return _loadCurrencyModel(paramPath, binPath, useGpu ? 1 : 0);
+  }
+
+  bool isCurrencyModelLoaded() {
+    if (!_isLoaded) return false;
+    return _isCurrencyModelLoaded() == 1;
+  }
+
+  int getCurrencyBackend() {
+    if (!_isLoaded) return -1;
+    return _getCurrencyBackend();
+  }
+
+  void unloadCurrencyModel() {
+    if (!_isLoaded) return;
+    _unloadCurrencyModel();
+  }
+
+  int detectCurrencyImage({
+    required ffi.Pointer<ffi.Uint8> rgbBytes,
+    required int width,
+    required int height,
+    required double probabilityThreshold,
+    required double nmsThreshold,
+    required ffi.Pointer<NativeDetection> output,
+    required int maxOutput,
+    required ffi.Pointer<ffi.Float> inferenceTimeMs,
+  }) {
+    if (!_isLoaded) return -100;
+    return _detectCurrencyImage(
+      rgbBytes,
+      width,
+      height,
+      probabilityThreshold,
+      nmsThreshold,
+      output,
+      maxOutput,
+      inferenceTimeMs,
+    );
   }
 }

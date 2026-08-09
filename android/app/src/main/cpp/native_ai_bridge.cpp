@@ -7,6 +7,7 @@
 
 #include "gpu.h"
 #include "nanodet_engine.h"
+#include "currency_nanodet_engine.h"
 #include "net.h"
 
 #define LOG_TAG "NativeAIEngine"
@@ -14,8 +15,76 @@
 
 namespace {
 NanoDetEngine g_nanodet_engine;
+CurrencyNanoDetEngine g_currency_engine;
+}
+AI_EXPORT int32_t load_currency_model(
+    const char* param_path,
+    const char* bin_path,
+    int32_t use_gpu
+) {
+    return g_currency_engine.load(param_path, bin_path, use_gpu == 1);
 }
 
+AI_EXPORT int32_t is_currency_model_loaded(void) {
+    return g_currency_engine.is_loaded() ? 1 : 0;
+}
+
+AI_EXPORT int32_t get_currency_backend(void) {
+    if (!g_currency_engine.is_loaded()) {
+        return -1;
+    }
+    return g_currency_engine.is_using_gpu() ? 1 : 0;
+}
+
+AI_EXPORT void unload_currency_model(void) {
+    g_currency_engine.unload();
+}
+
+AI_EXPORT int32_t detect_currency_image(
+    const uint8_t* rgb_bytes,
+    int32_t width,
+    int32_t height,
+    float probability_threshold,
+    float nms_threshold,
+    AIDetection* output,
+    int32_t max_output,
+    float* inference_time_ms
+) {
+    if (output == nullptr || max_output <= 0 || inference_time_ms == nullptr) {
+        return -4;
+    }
+
+    std::vector<CurrencyObject> objects;
+    const int result = g_currency_engine.detect(
+        rgb_bytes,
+        width,
+        height,
+        objects,
+        probability_threshold,
+        nms_threshold,
+        inference_time_ms
+    );
+
+    if (result != 0) {
+        return result;
+    }
+
+    const int count = std::min(
+        static_cast<int>(objects.size()),
+        static_cast<int>(max_output)
+    );
+
+    for (int index = 0; index < count; ++index) {
+        output[index].class_id = objects[index].class_id;
+        output[index].confidence = objects[index].confidence;
+        output[index].x = objects[index].x;
+        output[index].y = objects[index].y;
+        output[index].width = objects[index].width;
+        output[index].height = objects[index].height;
+    }
+
+    return count;
+}
 extern "C" {
 
 AI_EXPORT int32_t get_ai_engine_version(void) {

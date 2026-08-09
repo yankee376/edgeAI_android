@@ -77,6 +77,27 @@ AI_EXPORT AIInferenceResult process_image_frame(
     int32_t format
 );
 
+// === Currency NanoDet engine ===
+AI_EXPORT int32_t load_currency_model(
+    const char* param_path,
+    const char* bin_path,
+    int32_t use_gpu
+);
+
+AI_EXPORT int32_t is_currency_model_loaded(void);
+AI_EXPORT int32_t get_currency_backend(void);
+AI_EXPORT void unload_currency_model(void);
+
+AI_EXPORT int32_t detect_currency_image(
+    const uint8_t* rgb_bytes,
+    int32_t width,
+    int32_t height,
+    float probability_threshold,
+    float nms_threshold,
+    AIDetection* output,
+    int32_t max_output,
+    float* inference_time_ms
+);
 #ifdef __cplusplus
 }
 #endif

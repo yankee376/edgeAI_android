@@ -132,4 +132,85 @@ class AIEngineService {
   void unloadModel() {
     _bindings.unloadNanoDetModel();
   }
+
+  bool get isCurrencyModelLoaded => _bindings.isCurrencyModelLoaded();
+
+  Future<bool> initializeCurrencyModel({bool preferGpu = false}) async {
+    if (!_bindings.isLoaded) return false;
+
+    ffi.Pointer<Utf8>? paramPathPointer;
+    ffi.Pointer<Utf8>? binPathPointer;
+    try {
+      final modelFiles = await _modelAssetService.prepareCurrencyModel();
+      paramPathPointer = modelFiles.paramPath.toNativeUtf8();
+      binPathPointer = modelFiles.binPath.toNativeUtf8();
+
+      final code = _bindings.loadCurrencyModel(
+        paramPathPointer.cast<ffi.Char>(),
+        binPathPointer.cast<ffi.Char>(),
+        preferGpu,
+      );
+      return code == 0 && _bindings.isCurrencyModelLoaded();
+    } finally {
+      if (paramPathPointer != null) calloc.free(paramPathPointer);
+      if (binPathPointer != null) calloc.free(binPathPointer);
+    }
+  }
+
+  DetectionBatch detectCurrency({
+    required typed.Uint8List rgbBytes,
+    required int width,
+    required int height,
+    double probabilityThreshold = 0.40,
+    double nmsThreshold = 0.50,
+    int maxDetections = 100,
+  }) {
+    if (!_bindings.isCurrencyModelLoaded()) {
+      throw StateError('Currency model is not loaded');
+    }
+
+    final rgbPointer = calloc<ffi.Uint8>(rgbBytes.length);
+    final outputPointer = calloc<NativeDetection>(maxDetections);
+    final timePointer = calloc<ffi.Float>();
+
+    try {
+      rgbPointer.asTypedList(rgbBytes.length).setAll(0, rgbBytes);
+
+      final count = _bindings.detectCurrencyImage(
+        rgbBytes: rgbPointer,
+        width: width,
+        height: height,
+        probabilityThreshold: probabilityThreshold,
+        nmsThreshold: nmsThreshold,
+        output: outputPointer,
+        maxOutput: maxDetections,
+        inferenceTimeMs: timePointer,
+      );
+
+      if (count < 0) {
+        throw StateError('Currency inference failed with code $count');
+      }
+
+      final detections = List<Detection>.generate(count, (index) {
+        final native = outputPointer[index];
+        return Detection(
+          classId: native.classId,
+          confidence: native.confidence,
+          x: native.x,
+          y: native.y,
+          width: native.width,
+          height: native.height,
+        );
+      }, growable: false);
+
+      return DetectionBatch(
+        detections: detections,
+        inferenceTimeMs: timePointer.value,
+      );
+    } finally {
+      calloc.free(rgbPointer);
+      calloc.free(outputPointer);
+      calloc.free(timePointer);
+    }
+  }
 }

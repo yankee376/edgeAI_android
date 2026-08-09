@@ -10,6 +10,13 @@ class NanoDetModelFiles {
   const NanoDetModelFiles({required this.paramPath, required this.binPath});
 }
 
+class CurrencyModelFiles {
+  final String paramPath;
+  final String binPath;
+
+  const CurrencyModelFiles({required this.paramPath, required this.binPath});
+}
+
 /// Chuẩn bị model NCNN thành các file thật trên bộ nhớ riêng của ứng dụng.
 ///
 /// Flutter assets nằm bên trong APK nên C++ không thể dùng trực tiếp như một
@@ -18,6 +25,11 @@ class ModelAssetService {
   static const String _paramAsset = 'assets/models/nanodet-ELite0_320.param';
 
   static const String _binAsset = 'assets/models/nanodet-ELite0_320.bin';
+
+  static const String _currencyParamAsset =
+      'assets/models/nanodet_currency.ncnn.param';
+  static const String _currencyBinAsset =
+      'assets/models/nanodet_currency.ncnn.bin';
 
   Future<NanoDetModelFiles> prepareNanoDetModel() async {
     final Directory supportDirectory = await getApplicationSupportDirectory();
@@ -39,6 +51,32 @@ class ModelAssetService {
     await _copyAssetIfNeeded(assetPath: _binAsset, destination: binFile);
 
     return NanoDetModelFiles(paramPath: paramFile.path, binPath: binFile.path);
+  }
+
+  Future<CurrencyModelFiles> prepareCurrencyModel() async {
+    final Directory supportDirectory = await getApplicationSupportDirectory();
+    final Directory modelDirectory = Directory(
+      '${supportDirectory.path}/models',
+    );
+    await modelDirectory.create(recursive: true);
+
+    final File paramFile = File(
+      '${modelDirectory.path}/nanodet_currency.ncnn.param',
+    );
+    final File binFile = File(
+      '${modelDirectory.path}/nanodet_currency.ncnn.bin',
+    );
+
+    await _copyAssetIfNeeded(
+      assetPath: _currencyParamAsset,
+      destination: paramFile,
+    );
+    await _copyAssetIfNeeded(
+      assetPath: _currencyBinAsset,
+      destination: binFile,
+    );
+
+    return CurrencyModelFiles(paramPath: paramFile.path, binPath: binFile.path);
   }
 
   Future<void> _copyAssetIfNeeded({
