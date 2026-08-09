@@ -17,6 +17,7 @@ add_library(
     SHARED
     native_ai_bridge.cpp
     nanodet_engine.cpp
+    currency_nanodet_engine.cpp
 )
 
 find_library(
