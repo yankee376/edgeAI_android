@@ -17,6 +17,9 @@ namespace {
 NanoDetEngine g_nanodet_engine;
 CurrencyNanoDetEngine g_currency_engine;
 }
+
+extern "C" {
+
 AI_EXPORT int32_t load_currency_model(
     const char* param_path,
     const char* bin_path,
@@ -83,9 +86,8 @@ AI_EXPORT int32_t detect_currency_image(
         output[index].height = objects[index].height;
     }
 
-    return count;
+return count;
 }
-extern "C" {
 
 AI_EXPORT int32_t get_ai_engine_version(void) {
     return 120; // 1.2.0: multi-object detection
