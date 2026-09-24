@@ -150,6 +150,17 @@ typedef DartProcessImageFrame =
       int format,
     );
 
+typedef CLoadYolo26Model = CLoadNanoDetModel;
+typedef DartLoadYolo26Model = DartLoadNanoDetModel;
+typedef CIsYolo26ModelLoaded = CIsNanoDetModelLoaded;
+typedef DartIsYolo26ModelLoaded = DartIsNanoDetModelLoaded;
+typedef CGetYolo26Backend = CGetNanoDetBackend;
+typedef DartGetYolo26Backend = DartGetNanoDetBackend;
+typedef CUnloadYolo26Model = CUnloadNanoDetModel;
+typedef DartUnloadYolo26Model = DartUnloadNanoDetModel;
+typedef CDetectYolo26Image = CDetectRgbImage;
+typedef DartDetectYolo26Image = DartDetectRgbImage;
+
 class NativeAIBindings {
   late final ffi.DynamicLibrary _nativeLib;
 
@@ -166,6 +177,12 @@ class NativeAIBindings {
   late final DartGetCurrencyBackend _getCurrencyBackend;
   late final DartUnloadCurrencyModel _unloadCurrencyModel;
   late final DartDetectCurrencyImage _detectCurrencyImage;
+
+  late final DartLoadYolo26Model _loadYolo26Model;
+  late final DartIsYolo26ModelLoaded _isYolo26ModelLoaded;
+  late final DartGetYolo26Backend _getYolo26Backend;
+  late final DartUnloadYolo26Model _unloadYolo26Model;
+  late final DartDetectYolo26Image _detectYolo26Image;
 
   bool _isLoaded = false;
 
@@ -231,6 +248,11 @@ class NativeAIBindings {
           .lookup<ffi.NativeFunction<CDetectCurrencyImage>>('detect_currency_image')
           .asFunction();
 
+      _loadYolo26Model = _nativeLib.lookup<ffi.NativeFunction<CLoadYolo26Model>>('load_yolo26_model').asFunction();
+      _isYolo26ModelLoaded = _nativeLib.lookup<ffi.NativeFunction<CIsYolo26ModelLoaded>>('is_yolo26_model_loaded').asFunction();
+      _getYolo26Backend = _nativeLib.lookup<ffi.NativeFunction<CGetYolo26Backend>>('get_yolo26_backend').asFunction();
+      _unloadYolo26Model = _nativeLib.lookup<ffi.NativeFunction<CUnloadYolo26Model>>('unload_yolo26_model').asFunction();
+      _detectYolo26Image = _nativeLib.lookup<ffi.NativeFunction<CDetectYolo26Image>>('detect_yolo26_image').asFunction();
       _isLoaded = true;
     } catch (_) {
       _isLoaded = false;
@@ -352,4 +374,16 @@ class NativeAIBindings {
       inferenceTimeMs,
     );
   }
+  int loadYolo26Model(ffi.Pointer<ffi.Char> param, ffi.Pointer<ffi.Char> bin, bool gpu) =>
+      _isLoaded ? _loadYolo26Model(param, bin, gpu ? 1 : 0) : -100;
+  bool isYolo26ModelLoaded() => _isLoaded && _isYolo26ModelLoaded() == 1;
+  int getYolo26Backend() => _isLoaded ? _getYolo26Backend() : -1;
+  void unloadYolo26Model() { if (_isLoaded) _unloadYolo26Model(); }
+  int detectYolo26Image({required ffi.Pointer<ffi.Uint8> rgbBytes, required int width,
+    required int height, required double probabilityThreshold, required double nmsThreshold,
+    required ffi.Pointer<NativeDetection> output, required int maxOutput,
+    required ffi.Pointer<ffi.Float> inferenceTimeMs}) => _isLoaded
+      ? _detectYolo26Image(rgbBytes, width, height, probabilityThreshold,
+          nmsThreshold, output, maxOutput, inferenceTimeMs) : -100;
+
 }

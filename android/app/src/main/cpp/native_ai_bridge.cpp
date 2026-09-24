@@ -9,6 +9,7 @@
 #include "nanodet_engine.h"
 #include "currency_nanodet_engine.h"
 #include "net.h"
+#include "yolo26_engine.h"
 
 #define LOG_TAG "NativeAIEngine"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -16,9 +17,32 @@
 namespace {
 NanoDetEngine g_nanodet_engine;
 CurrencyNanoDetEngine g_currency_engine;
+Yolo26Engine g_yolo26_engine;
 }
 
 extern "C" {
+AI_EXPORT int32_t load_yolo26_model(const char* param, const char* bin, int32_t gpu) {
+    return g_yolo26_engine.load(param, bin, gpu == 1);
+}
+AI_EXPORT int32_t is_yolo26_model_loaded(void) { return g_yolo26_engine.is_loaded() ? 1 : 0; }
+AI_EXPORT int32_t get_yolo26_backend(void) {
+    return g_yolo26_engine.is_loaded() ? (g_yolo26_engine.is_using_gpu() ? 1 : 0) : -1;
+}
+AI_EXPORT void unload_yolo26_model(void) { g_yolo26_engine.unload(); }
+AI_EXPORT int32_t detect_yolo26_image(const uint8_t* rgb, int32_t width, int32_t height,
+    float threshold, float nms, AIDetection* output, int32_t max_output, float* time_ms) {
+    if (!output || max_output <= 0 || !time_ms) return -4;
+    std::vector<Yolo26Object> objects;
+    const int status = g_yolo26_engine.detect(rgb,width,height,objects,threshold,nms,time_ms);
+    if (status != 0) return status;
+    const int count = std::min(static_cast<int>(objects.size()), static_cast<int>(max_output));
+    for (int i=0;i<count;++i) {
+        output[i] = {objects[i].class_id, objects[i].confidence, objects[i].x,
+                     objects[i].y, objects[i].width, objects[i].height};
+    }
+    return count;
+}
+
 
 AI_EXPORT int32_t load_currency_model(
     const char* param_path,

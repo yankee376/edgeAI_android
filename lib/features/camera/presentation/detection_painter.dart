@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../ai_engine/domain/detection.dart';
-import '../data/coco_labels.dart';
+import '../data/yolo26_labels.dart';
 
 class DetectionPainter extends CustomPainter {
   final List<Detection> detections;
@@ -38,8 +38,8 @@ class DetectionPainter extends CustomPainter {
       canvas.drawRect(rect, boxPaint);
 
       final className =
-          detection.classId >= 0 && detection.classId < cocoLabels.length
-          ? cocoLabels[detection.classId]
+          detection.classId >= 0 && detection.classId < yolo26Labels.length
+          ? yolo26Labels[detection.classId]
           : 'class ${detection.classId}';
       final label =
           '$className ${(detection.confidence * 100).toStringAsFixed(1)}%';

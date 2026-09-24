@@ -18,6 +18,7 @@ add_library(
     native_ai_bridge.cpp
     nanodet_engine.cpp
     currency_nanodet_engine.cpp
+    yolo26_engine.cpp
 )
 
 find_library(

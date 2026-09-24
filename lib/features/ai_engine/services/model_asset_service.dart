@@ -17,6 +17,12 @@ class CurrencyModelFiles {
   const CurrencyModelFiles({required this.paramPath, required this.binPath});
 }
 
+class Yolo26ModelFiles {
+  final String paramPath;
+  final String binPath;
+  const Yolo26ModelFiles({required this.paramPath, required this.binPath});
+}
+
 /// Chuẩn bị model NCNN thành các file thật trên bộ nhớ riêng của ứng dụng.
 ///
 /// Flutter assets nằm bên trong APK nên C++ không thể dùng trực tiếp như một
@@ -30,6 +36,18 @@ class ModelAssetService {
       'assets/models/nanodet_currency.ncnn.param';
   static const String _currencyBinAsset =
       'assets/models/nanodet_currency.ncnn.bin';
+
+  Future<Yolo26ModelFiles> prepareYolo26Model() async {
+    final support = await getApplicationSupportDirectory();
+    final directory = Directory('${support.path}/models');
+    await directory.create(recursive: true);
+    // Versioned paths prevent a stale file from another model export being reused.
+    final param = File('${directory.path}/yolo26_99.ncnn.param');
+    final bin = File('${directory.path}/yolo26_99.ncnn.bin');
+    await _copyAssetIfNeeded(assetPath: 'assets/models/yolo26.ncnn.param', destination: param);
+    await _copyAssetIfNeeded(assetPath: 'assets/models/yolo26.ncnn.bin', destination: bin);
+    return Yolo26ModelFiles(paramPath: param.path, binPath: bin.path);
+  }
 
   Future<NanoDetModelFiles> prepareNanoDetModel() async {
     final Directory supportDirectory = await getApplicationSupportDirectory();

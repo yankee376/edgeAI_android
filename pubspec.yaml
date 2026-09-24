@@ -96,3 +96,5 @@ flutter:
     - assets/models/nanodet-ELite0_320.bin
     - assets/models/nanodet_currency.ncnn.param
     - assets/models/nanodet_currency.ncnn.bin
+    - assets/models/yolo26.ncnn.param
+    - assets/models/yolo26.ncnn.bin

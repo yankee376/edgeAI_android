@@ -113,7 +113,7 @@ class _CameraScreenState extends State<CameraScreen> {
       _isModelLoading = true;
     });
 
-    final loaded = await _aiEngineService.initializeModel(preferGpu: false);
+    final loaded = await _aiEngineService.initializeYolo26Model(preferGpu: false);
     if (!mounted) return;
 
     setState(() {
@@ -122,8 +122,8 @@ class _CameraScreenState extends State<CameraScreen> {
     });
 
     final message = loaded
-        ? 'NanoDet đã load bằng ${_aiEngineService.modelBackendName}'
-        : 'Không load được NanoDet. Mã lỗi: ${_aiEngineService.lastModelLoadCode}';
+        ? 'YOLO26 đã load bằng ${_aiEngineService.yolo26BackendName}'
+        : 'Không load được YOLO26. Mã lỗi: ${_aiEngineService.lastModelLoadCode}';
     _showMessage(message);
   }
 
@@ -133,8 +133,8 @@ class _CameraScreenState extends State<CameraScreen> {
       return;
     }
 
-    if (!_aiEngineService.isModelLoaded) {
-      _showMessage('Hãy nhấn “Load NanoDet” trước.');
+    if (!_aiEngineService.isYolo26ModelLoaded) {
+      _showMessage('Hãy nhấn “Load YOLO26” trước.');
       return;
     }
 
@@ -152,7 +152,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
       final oriented = img.bakeOrientation(decoded);
       final rgbBytes = oriented.getBytes(order: img.ChannelOrder.rgb);
-      final batch = _aiEngineService.detectRgb(
+      final batch = _aiEngineService.detectYolo26(
         rgbBytes: rgbBytes,
         width: oriented.width,
         height: oriented.height,
@@ -203,7 +203,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   void dispose() {
-    _aiEngineService.unloadModel();
+    _aiEngineService.unloadYolo26Model();
     _controller?.dispose();
     super.dispose();
   }
@@ -217,7 +217,7 @@ class _CameraScreenState extends State<CameraScreen> {
           children: [
             Icon(Icons.memory, color: Color(0xFF7F5AF0)),
             SizedBox(width: 8),
-            Text('EdgeAI NanoDet'),
+            Text('EdgeAI YOLO26'),
           ],
         ),
         actions: [
@@ -326,7 +326,7 @@ class _CameraScreenState extends State<CameraScreen> {
         children: [
           Text(
             _aiEngineService.isNativeLoaded
-                ? 'NCNN v$_engineVersion • ${_isModelLoaded ? _aiEngineService.modelBackendName : 'model chưa load'}'
+                ? 'NCNN v$_engineVersion • ${_isModelLoaded ? _aiEngineService.yolo26BackendName : 'model chưa load'}'
                 : 'Native library chưa load',
             style: const TextStyle(
               color: Colors.white,
@@ -378,8 +378,8 @@ class _CameraScreenState extends State<CameraScreen> {
               _isModelLoading
                   ? 'Đang load...'
                   : _isModelLoaded
-                  ? 'NanoDet Loaded'
-                  : 'Load NanoDet',
+                  ? 'YOLO26 Loaded'
+                  : 'Load YOLO26',
             ),
           ),
           ElevatedButton.icon(

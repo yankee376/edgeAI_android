@@ -133,6 +133,67 @@ class AIEngineService {
     _bindings.unloadNanoDetModel();
   }
 
+  bool get isYolo26ModelLoaded => _bindings.isYolo26ModelLoaded();
+  int get yolo26Backend => _bindings.getYolo26Backend();
+  String get yolo26BackendName => switch (yolo26Backend) {
+    1 => 'Vulkan GPU',
+    0 => 'CPU',
+    _ => 'Not loaded',
+  };
+
+  Future<bool> initializeYolo26Model({bool preferGpu = false}) async {
+    if (!_bindings.isLoaded) { _lastModelLoadCode = -100; return false; }
+    ffi.Pointer<Utf8>? param;
+    ffi.Pointer<Utf8>? bin;
+    try {
+      final files = await _modelAssetService.prepareYolo26Model();
+      param = files.paramPath.toNativeUtf8();
+      bin = files.binPath.toNativeUtf8();
+      _lastModelLoadCode = _bindings.loadYolo26Model(
+        param.cast<ffi.Char>(), bin.cast<ffi.Char>(), preferGpu);
+      debugPrint('YOLO26 load result: $_lastModelLoadCode');
+      return _lastModelLoadCode == 0 && _bindings.isYolo26ModelLoaded();
+    } catch (error, stackTrace) {
+      _lastModelLoadCode = -101;
+      debugPrint('YOLO26 initialization error: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return false;
+    } finally {
+      if (param != null) calloc.free(param);
+      if (bin != null) calloc.free(bin);
+    }
+  }
+
+  DetectionBatch detectYolo26({required typed.Uint8List rgbBytes,
+    required int width, required int height, double probabilityThreshold = 0.40,
+    double nmsThreshold = 0.50, int maxDetections = 100}) {
+    if (!_bindings.isYolo26ModelLoaded()) throw StateError('YOLO26 model is not loaded');
+    if (width <= 0 || height <= 0 || rgbBytes.length != width * height * 3) {
+      throw ArgumentError('Invalid RGB image dimensions or byte count');
+    }
+    if (maxDetections <= 0) throw ArgumentError.value(maxDetections, 'maxDetections');
+    final rgb = calloc<ffi.Uint8>(rgbBytes.length);
+    final output = calloc<NativeDetection>(maxDetections);
+    final time = calloc<ffi.Float>();
+    try {
+      rgb.asTypedList(rgbBytes.length).setAll(0, rgbBytes);
+      final count = _bindings.detectYolo26Image(rgbBytes: rgb, width: width,
+        height: height, probabilityThreshold: probabilityThreshold,
+        nmsThreshold: nmsThreshold, output: output, maxOutput: maxDetections,
+        inferenceTimeMs: time);
+      if (count < 0) throw StateError('YOLO26 inference failed with code $count');
+      return DetectionBatch(detections: List<Detection>.generate(count, (i) {
+        final d = output[i];
+        return Detection(classId: d.classId, confidence: d.confidence,
+          x: d.x, y: d.y, width: d.width, height: d.height);
+      }, growable: false), inferenceTimeMs: time.value);
+    } finally {
+      calloc.free(rgb); calloc.free(output); calloc.free(time);
+    }
+  }
+
+  void unloadYolo26Model() => _bindings.unloadYolo26Model();
+
   bool get isCurrencyModelLoaded => _bindings.isCurrencyModelLoaded();
 
   Future<bool> initializeCurrencyModel({bool preferGpu = false}) async {
