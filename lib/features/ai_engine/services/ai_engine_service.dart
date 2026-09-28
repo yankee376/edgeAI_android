@@ -135,6 +135,10 @@ class AIEngineService {
 
   bool get isYolo26ModelLoaded => _bindings.isYolo26ModelLoaded();
   int get yolo26Backend => _bindings.getYolo26Backend();
+  int get yolo26CpuThreadCount => _bindings.getYolo26CpuThreadCount();
+  int get yolo26CpuCoreCount => _bindings.getYolo26CpuCoreCount();
+  int get yolo26GpuCount => _bindings.getYolo26GpuCount();
+  String get yolo26GpuName => _bindings.getYolo26GpuName();
   String get yolo26BackendName => switch (yolo26Backend) {
     1 => 'Vulkan GPU',
     0 => 'CPU',

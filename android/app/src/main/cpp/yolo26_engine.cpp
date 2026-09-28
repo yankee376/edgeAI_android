@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cmath>
 #include <mutex>
+#include "cpu.h"
 #include "gpu.h"
 namespace {
 struct Box { float x1,y1,x2,y2,score; int cls; };
@@ -34,8 +35,17 @@ Yolo26Engine::~Yolo26Engine() { unload(); }
 int Yolo26Engine::load(const char* param, const char* bin, bool gpu) {
     std::lock_guard<std::mutex> guard(mutex_);
     net_.clear(); loaded_ = false; gpu_ = false;
+    cpu_core_count_ = ncnn::get_cpu_count();
+    if (cpu_core_count_ < 1) cpu_core_count_ = 1;
+    cpu_thread_count_ = 1;
     if (!param || !bin) return -1;
+    cpu_thread_count_ = ncnn::get_big_cpu_count();
+    if (cpu_thread_count_ < 1) cpu_thread_count_ = ncnn::get_cpu_count();
+    if (cpu_thread_count_ < 1) cpu_thread_count_ = 1;
+    ncnn::set_cpu_powersave(2);
+    ncnn::set_omp_num_threads(cpu_thread_count_);
     net_.opt = ncnn::Option();
+    net_.opt.num_threads = cpu_thread_count_;
 #if NCNN_VULKAN
     gpu_ = gpu && has_vulkan_gpu();
     net_.opt.use_vulkan_compute = gpu_;
@@ -56,6 +66,30 @@ bool Yolo26Engine::is_loaded() const {
 }
 bool Yolo26Engine::is_using_gpu() const {
     std::lock_guard<std::mutex> guard(mutex_); return gpu_;
+}
+int Yolo26Engine::cpu_core_count() const {
+    std::lock_guard<std::mutex> guard(mutex_); return cpu_core_count_;
+}
+int Yolo26Engine::cpu_thread_count() const {
+    std::lock_guard<std::mutex> guard(mutex_); return cpu_thread_count_;
+}
+int Yolo26Engine::gpu_count() const {
+#if NCNN_VULKAN
+    return has_vulkan_gpu() ? ncnn::get_gpu_count() : 0;
+#else
+    return 0;
+#endif
+}
+const char* Yolo26Engine::gpu_name() const {
+#if NCNN_VULKAN
+    if (!has_vulkan_gpu()) return "Vulkan unavailable";
+    const int device_index = ncnn::get_default_gpu_index();
+    return device_index >= 0 && device_index < ncnn::get_gpu_count()
+        ? ncnn::get_gpu_info(device_index).device_name()
+        : "Unknown Vulkan device";
+#else
+    return "NCNN built without Vulkan";
+#endif
 }
 int Yolo26Engine::detect(const uint8_t* rgb, int width, int height,
                           std::vector<Yolo26Object>& result, float threshold,

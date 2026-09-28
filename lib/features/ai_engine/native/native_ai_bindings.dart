@@ -1,6 +1,8 @@
 import 'dart:ffi' as ffi;
 import 'dart:io';
 
+import 'package:ffi/ffi.dart' show Utf8, Utf8Pointer;
+
 final class NativeAIInferenceResult extends ffi.Struct {
   @ffi.Int32()
   external int width;
@@ -156,6 +158,14 @@ typedef CIsYolo26ModelLoaded = CIsNanoDetModelLoaded;
 typedef DartIsYolo26ModelLoaded = DartIsNanoDetModelLoaded;
 typedef CGetYolo26Backend = CGetNanoDetBackend;
 typedef DartGetYolo26Backend = DartGetNanoDetBackend;
+typedef CGetYolo26CpuThreads = ffi.Int32 Function();
+typedef DartGetYolo26CpuThreads = int Function();
+typedef CGetYolo26CpuCoreCount = ffi.Int32 Function();
+typedef DartGetYolo26CpuCoreCount = int Function();
+typedef CGetYolo26GpuCount = ffi.Int32 Function();
+typedef DartGetYolo26GpuCount = int Function();
+typedef CGetYolo26GpuName = ffi.Pointer<Utf8> Function();
+typedef DartGetYolo26GpuName = ffi.Pointer<Utf8> Function();
 typedef CUnloadYolo26Model = CUnloadNanoDetModel;
 typedef DartUnloadYolo26Model = DartUnloadNanoDetModel;
 typedef CDetectYolo26Image =
@@ -205,6 +215,10 @@ class NativeAIBindings {
   late final DartLoadYolo26Model _loadYolo26Model;
   late final DartIsYolo26ModelLoaded _isYolo26ModelLoaded;
   late final DartGetYolo26Backend _getYolo26Backend;
+  late final DartGetYolo26CpuThreads _getYolo26CpuThreads;
+  late final DartGetYolo26CpuCoreCount _getYolo26CpuCoreCount;
+  late final DartGetYolo26GpuCount _getYolo26GpuCount;
+  late final DartGetYolo26GpuName _getYolo26GpuName;
   late final DartUnloadYolo26Model _unloadYolo26Model;
   late final DartDetectYolo26Image _detectYolo26Image;
 
@@ -286,6 +300,24 @@ class NativeAIBindings {
           .asFunction();
       _getYolo26Backend = _nativeLib
           .lookup<ffi.NativeFunction<CGetYolo26Backend>>('get_yolo26_backend')
+          .asFunction();
+      _getYolo26CpuThreads = _nativeLib
+          .lookup<ffi.NativeFunction<CGetYolo26CpuThreads>>(
+            'get_yolo26_cpu_thread_count',
+          )
+          .asFunction();
+      _getYolo26CpuCoreCount = _nativeLib
+          .lookup<ffi.NativeFunction<CGetYolo26CpuCoreCount>>(
+            'get_yolo26_cpu_core_count',
+          )
+          .asFunction();
+      _getYolo26GpuCount = _nativeLib
+          .lookup<ffi.NativeFunction<CGetYolo26GpuCount>>(
+            'get_yolo26_gpu_count',
+          )
+          .asFunction();
+      _getYolo26GpuName = _nativeLib
+          .lookup<ffi.NativeFunction<CGetYolo26GpuName>>('get_yolo26_gpu_name')
           .asFunction();
       _unloadYolo26Model = _nativeLib
           .lookup<ffi.NativeFunction<CUnloadYolo26Model>>('unload_yolo26_model')
@@ -423,6 +455,12 @@ class NativeAIBindings {
   ) => _isLoaded ? _loadYolo26Model(param, bin, gpu ? 1 : 0) : -100;
   bool isYolo26ModelLoaded() => _isLoaded && _isYolo26ModelLoaded() == 1;
   int getYolo26Backend() => _isLoaded ? _getYolo26Backend() : -1;
+  int getYolo26CpuThreadCount() => _isLoaded ? _getYolo26CpuThreads() : 0;
+  int getYolo26CpuCoreCount() => _isLoaded ? _getYolo26CpuCoreCount() : 0;
+  int getYolo26GpuCount() => _isLoaded ? _getYolo26GpuCount() : 0;
+  String getYolo26GpuName() => _isLoaded
+      ? _getYolo26GpuName().toDartString()
+      : 'Native library unavailable';
   void unloadYolo26Model() {
     if (_isLoaded) _unloadYolo26Model();
   }

@@ -18,10 +18,16 @@ public:
     void unload();
     bool is_loaded() const;
     bool is_using_gpu() const;
+    int cpu_core_count() const;
+    int cpu_thread_count() const;
+    int gpu_count() const;
+    const char* gpu_name() const;
 private:
     mutable std::mutex mutex_;
     ncnn::Net net_;
     bool loaded_ = false;
     bool gpu_ = false;
+    int cpu_core_count_ = 1;
+    int cpu_thread_count_ = 1;
 };
 #endif

@@ -101,6 +101,10 @@ AI_EXPORT int32_t detect_currency_image(
 AI_EXPORT int32_t load_yolo26_model(const char* param_path, const char* bin_path, int32_t use_gpu);
 AI_EXPORT int32_t is_yolo26_model_loaded(void);
 AI_EXPORT int32_t get_yolo26_backend(void);
+AI_EXPORT int32_t get_yolo26_cpu_core_count(void);
+AI_EXPORT int32_t get_yolo26_cpu_thread_count(void);
+AI_EXPORT int32_t get_yolo26_gpu_count(void);
+AI_EXPORT const char* get_yolo26_gpu_name(void);
 AI_EXPORT void unload_yolo26_model(void);
 AI_EXPORT int32_t detect_yolo26_image(const uint8_t* rgb_bytes, int32_t width, int32_t height,
     float probability_threshold, float nms_threshold, AIDetection* output,

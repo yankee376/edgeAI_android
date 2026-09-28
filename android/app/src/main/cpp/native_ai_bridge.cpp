@@ -28,6 +28,18 @@ AI_EXPORT int32_t is_yolo26_model_loaded(void) { return g_yolo26_engine.is_loade
 AI_EXPORT int32_t get_yolo26_backend(void) {
     return g_yolo26_engine.is_loaded() ? (g_yolo26_engine.is_using_gpu() ? 1 : 0) : -1;
 }
+AI_EXPORT int32_t get_yolo26_cpu_thread_count(void) {
+    return g_yolo26_engine.cpu_thread_count();
+}
+AI_EXPORT int32_t get_yolo26_cpu_core_count(void) {
+    return g_yolo26_engine.cpu_core_count();
+}
+AI_EXPORT int32_t get_yolo26_gpu_count(void) {
+    return g_yolo26_engine.gpu_count();
+}
+AI_EXPORT const char* get_yolo26_gpu_name(void) {
+    return g_yolo26_engine.gpu_name();
+}
 AI_EXPORT void unload_yolo26_model(void) { g_yolo26_engine.unload(); }
 AI_EXPORT int32_t detect_yolo26_image(const uint8_t* rgb, int32_t width, int32_t height,
     float threshold, float nms, AIDetection* output, int32_t max_output,

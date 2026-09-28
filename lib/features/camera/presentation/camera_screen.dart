@@ -466,7 +466,20 @@ class _CameraScreenState extends State<CameraScreen> {
                           ),
                         ),
                         Text(
-                          'Thông lượng trung bình • ${_engine.yolo26BackendName}',
+                          'Backend: ${_engine.yolo26BackendName}'
+                          '${_engine.yolo26Backend == 1 ? ' • ${_engine.yolo26GpuName}' : ''}',
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                        Text(
+                          'CPU: ${_engine.yolo26CpuCoreCount} lõi • '
+                          '${_engine.yolo26CpuThreadCount} luồng NCNN'
+                          ' • GPU Vulkan: ${_engine.yolo26GpuCount} thiết bị',
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                        Text(
+                          _engine.yolo26Backend == 1
+                              ? 'NCNN chạy layer hỗ trợ Vulkan trên GPU; CPU xử lý phần còn lại.'
+                              : 'Vulkan không hoạt động; model đang chạy trên CPU.',
                           style: const TextStyle(color: Colors.white70),
                         ),
                         Text(
