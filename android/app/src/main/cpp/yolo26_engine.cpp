@@ -69,7 +69,9 @@ int Yolo26Engine::detect(const uint8_t* rgb, int width, int height,
     ncnn::Extractor ex = net_.create_extractor();
     if (ex.input("in0", input) != 0) return -3;
     ncnn::Mat out;
+    const auto infer_start = std::chrono::steady_clock::now();
     if (ex.extract("out0",out) != 0) return -3;
+    const auto infer_end = std::chrono::steady_clock::now();
     // Export shape: [1, 103, 8400]. Four first rows are cx, cy, w, h.
     if (out.dims != 2 || out.h != 103 || out.w != 8400 || out.elemsize != 4) return -5;
     std::vector<Box> boxes;
@@ -104,6 +106,10 @@ int Yolo26Engine::detect(const uint8_t* rgb, int width, int height,
         if (x2<=x1 || y2<=y1) continue;
         result.push_back({b.cls,b.score,x1,y1,x2-x1,y2-y1});
     }
-    if (time_ms) *time_ms=std::chrono::duration<float,std::milli>(std::chrono::steady_clock::now()-start).count();
+    if (time_ms) {
+        *time_ms = std::chrono::duration<float, std::milli>(
+            infer_end - infer_start
+        ).count();
+    }
     return 0;
 }
