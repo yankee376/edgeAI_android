@@ -42,10 +42,18 @@ class ModelAssetService {
     final directory = Directory('${support.path}/models');
     await directory.create(recursive: true);
     // Versioned paths prevent a stale file from another model export being reused.
-    final param = File('${directory.path}/yolo26_99.ncnn.param');
-    final bin = File('${directory.path}/yolo26_99.ncnn.bin');
-    await _copyAssetIfNeeded(assetPath: 'assets/models/yolo26.ncnn.param', destination: param);
-    await _copyAssetIfNeeded(assetPath: 'assets/models/yolo26.ncnn.bin', destination: bin);
+    // Use a new cache name when model weights change so installed apps do not
+    // keep loading an older model copied by a previous version.
+    final param = File('${directory.path}/yolo26_best_pt_v1.ncnn.param');
+    final bin = File('${directory.path}/yolo26_best_pt_v1.ncnn.bin');
+    await _copyAssetIfNeeded(
+      assetPath: 'assets/models/yolo26.ncnn.param',
+      destination: param,
+    );
+    await _copyAssetIfNeeded(
+      assetPath: 'assets/models/yolo26.ncnn.bin',
+      destination: bin,
+    );
     return Yolo26ModelFiles(paramPath: param.path, binPath: bin.path);
   }
 

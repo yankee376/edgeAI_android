@@ -104,7 +104,8 @@ AI_EXPORT int32_t get_yolo26_backend(void);
 AI_EXPORT void unload_yolo26_model(void);
 AI_EXPORT int32_t detect_yolo26_image(const uint8_t* rgb_bytes, int32_t width, int32_t height,
     float probability_threshold, float nms_threshold, AIDetection* output,
-    int32_t max_output, float* inference_time_ms);
+    int32_t max_output, float* preprocess_time_ms, float* inference_time_ms,
+    float* postprocess_time_ms);
 
 #ifdef __cplusplus
 }

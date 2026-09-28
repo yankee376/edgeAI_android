@@ -30,10 +30,12 @@ AI_EXPORT int32_t get_yolo26_backend(void) {
 }
 AI_EXPORT void unload_yolo26_model(void) { g_yolo26_engine.unload(); }
 AI_EXPORT int32_t detect_yolo26_image(const uint8_t* rgb, int32_t width, int32_t height,
-    float threshold, float nms, AIDetection* output, int32_t max_output, float* time_ms) {
-    if (!output || max_output <= 0 || !time_ms) return -4;
+    float threshold, float nms, AIDetection* output, int32_t max_output,
+    float* preprocess_ms, float* inference_ms, float* postprocess_ms) {
+    if (!output || max_output <= 0 || !preprocess_ms || !inference_ms || !postprocess_ms) return -4;
     std::vector<Yolo26Object> objects;
-    const int status = g_yolo26_engine.detect(rgb,width,height,objects,threshold,nms,time_ms);
+    const int status = g_yolo26_engine.detect(rgb, width, height, objects, threshold,
+        nms, preprocess_ms, inference_ms, postprocess_ms);
     if (status != 0) return status;
     const int count = std::min(static_cast<int>(objects.size()), static_cast<int>(max_output));
     for (int i=0;i<count;++i) {

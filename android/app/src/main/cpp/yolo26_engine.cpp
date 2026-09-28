@@ -2,9 +2,24 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <mutex>
 #include "gpu.h"
 namespace {
 struct Box { float x1,y1,x2,y2,score; int cls; };
+
+#if NCNN_VULKAN
+bool has_vulkan_gpu() {
+    // This library is loaded through Dart FFI, so JNI_OnLoad is not a reliable
+    // place to initialize Vulkan. Keep the VkInstance alive for the process.
+    static std::once_flag once;
+    static bool available = false;
+    std::call_once(once, []() {
+        available = ncnn::create_gpu_instance() == 0 && ncnn::get_gpu_count() > 0;
+    });
+    return available;
+}
+#endif
+
 float overlap(const Box& a, const Box& b) {
     const float w = std::max(0.f, std::min(a.x2,b.x2)-std::max(a.x1,b.x1));
     const float h = std::max(0.f, std::min(a.y2,b.y2)-std::max(a.y1,b.y1));
@@ -22,7 +37,7 @@ int Yolo26Engine::load(const char* param, const char* bin, bool gpu) {
     if (!param || !bin) return -1;
     net_.opt = ncnn::Option();
 #if NCNN_VULKAN
-    gpu_ = gpu && ncnn::get_gpu_count() > 0;
+    gpu_ = gpu && has_vulkan_gpu();
     net_.opt.use_vulkan_compute = gpu_;
 #else
     (void)gpu;
@@ -44,7 +59,8 @@ bool Yolo26Engine::is_using_gpu() const {
 }
 int Yolo26Engine::detect(const uint8_t* rgb, int width, int height,
                           std::vector<Yolo26Object>& result, float threshold,
-                          float nms_threshold, float* time_ms) {
+                          float nms_threshold, float* preprocess_ms,
+                          float* inference_ms, float* postprocess_ms) {
     result.clear();
     std::lock_guard<std::mutex> guard(mutex_);
     if (!loaded_) return -1;
@@ -69,7 +85,7 @@ int Yolo26Engine::detect(const uint8_t* rgb, int width, int height,
     ncnn::Extractor ex = net_.create_extractor();
     if (ex.input("in0", input) != 0) return -3;
     ncnn::Mat out;
-    const auto infer_start = std::chrono::steady_clock::now();
+    const auto preprocess_end = std::chrono::steady_clock::now();
     if (ex.extract("out0",out) != 0) return -3;
     const auto infer_end = std::chrono::steady_clock::now();
     // Export shape: [1, 103, 8400]. Four first rows are cx, cy, w, h.
@@ -106,10 +122,12 @@ int Yolo26Engine::detect(const uint8_t* rgb, int width, int height,
         if (x2<=x1 || y2<=y1) continue;
         result.push_back({b.cls,b.score,x1,y1,x2-x1,y2-y1});
     }
-    if (time_ms) {
-        *time_ms = std::chrono::duration<float, std::milli>(
-            infer_end - infer_start
-        ).count();
-    }
+    const auto postprocess_end = std::chrono::steady_clock::now();
+    if (preprocess_ms) *preprocess_ms =
+        std::chrono::duration<float, std::milli>(preprocess_end-start).count();
+    if (inference_ms) *inference_ms =
+        std::chrono::duration<float, std::milli>(infer_end-preprocess_end).count();
+    if (postprocess_ms) *postprocess_ms =
+        std::chrono::duration<float, std::milli>(postprocess_end-infer_end).count();
     return 0;
 }

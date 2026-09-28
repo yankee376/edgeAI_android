@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:collection';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
@@ -20,19 +19,68 @@ class _PlaneData {
 class _FrameData {
   final int width, height, rotation;
   final bool mirror;
+  final double cameraCopyMs;
   final List<_PlaneData> planes;
-  const _FrameData(this.width, this.height, this.rotation, this.mirror, this.planes);
+  const _FrameData(
+    this.width,
+    this.height,
+    this.rotation,
+    this.mirror,
+    this.cameraCopyMs,
+    this.planes,
+  );
 }
 
 class _DetectionFrame {
   final int width, height;
   final List<Detection> detections;
+  final double cameraCopyMs;
+  final double yuvToRgbMs;
+  final double nativeCallMs;
+  final double nativePreprocessMs;
   final double inferenceMs;
-  const _DetectionFrame(this.width, this.height, this.detections, this.inferenceMs);
+  final double nativePostprocessMs;
+  final double workerTotalMs;
+  final double computeRoundTripMs;
+  const _DetectionFrame({
+    required this.width,
+    required this.height,
+    required this.detections,
+    required this.cameraCopyMs,
+    required this.yuvToRgbMs,
+    required this.nativeCallMs,
+    required this.nativePreprocessMs,
+    required this.inferenceMs,
+    required this.nativePostprocessMs,
+    required this.workerTotalMs,
+    this.computeRoundTripMs = 0,
+  });
+
+  _DetectionFrame withComputeRoundTrip(double value) => _DetectionFrame(
+    width: width,
+    height: height,
+    detections: detections,
+    cameraCopyMs: cameraCopyMs,
+    yuvToRgbMs: yuvToRgbMs,
+    nativeCallMs: nativeCallMs,
+    nativePreprocessMs: nativePreprocessMs,
+    inferenceMs: inferenceMs,
+    nativePostprocessMs: nativePostprocessMs,
+    workerTotalMs: workerTotalMs,
+    computeRoundTripMs: value,
+  );
+
+  double get isolateOverheadMs =>
+      (computeRoundTripMs - workerTotalMs).clamp(0, double.infinity);
+  double get ffiOverheadMs =>
+      (nativeCallMs - nativePreprocessMs - inferenceMs - nativePostprocessMs)
+          .clamp(0, double.infinity);
+  double get pipelineTotalMs => cameraCopyMs + computeRoundTripMs;
 }
 
 // Runs off the UI isolate, including the synchronous NCNN call.
 _DetectionFrame _detectFrame(_FrameData frame) {
+  final workerClock = Stopwatch()..start();
   if (frame.planes.length != 3) {
     throw StateError('Chỉ hỗ trợ camera stream YUV420 có 3 planes');
   }
@@ -42,6 +90,7 @@ _DetectionFrame _detectFrame(_FrameData frame) {
   final rgb = Uint8List(width * height * 3);
   final yp = frame.planes[0], up = frame.planes[1], vp = frame.planes[2];
 
+  final conversionClock = Stopwatch()..start();
   for (var y = 0; y < frame.height; y++) {
     for (var x = 0; x < frame.width; x++) {
       final luminance = yp.bytes[y * yp.rowStride + x * yp.pixelStride];
@@ -63,12 +112,35 @@ _DetectionFrame _detectFrame(_FrameData frame) {
       if (frame.mirror) dx = width - 1 - dx;
       final offset = (dy * width + dx) * 3;
       rgb[offset] = (luminance + 1.402 * v).round().clamp(0, 255);
-      rgb[offset + 1] = (luminance - 0.344136 * u - 0.714136 * v).round().clamp(0, 255);
+      rgb[offset + 1] = (luminance - 0.344136 * u - 0.714136 * v).round().clamp(
+        0,
+        255,
+      );
       rgb[offset + 2] = (luminance + 1.772 * u).round().clamp(0, 255);
     }
   }
-  final batch = AIEngineService().detectYolo26(rgbBytes: rgb, width: width, height: height);
-  return _DetectionFrame(width, height, batch.detections, batch.inferenceTimeMs);
+  conversionClock.stop();
+
+  final nativeClock = Stopwatch()..start();
+  final batch = AIEngineService().detectYolo26(
+    rgbBytes: rgb,
+    width: width,
+    height: height,
+  );
+  nativeClock.stop();
+  workerClock.stop();
+  return _DetectionFrame(
+    width: width,
+    height: height,
+    detections: batch.detections,
+    cameraCopyMs: frame.cameraCopyMs,
+    yuvToRgbMs: conversionClock.elapsedMicroseconds / 1000,
+    nativeCallMs: nativeClock.elapsedMicroseconds / 1000,
+    nativePreprocessMs: batch.preprocessTimeMs,
+    inferenceMs: batch.inferenceTimeMs,
+    nativePostprocessMs: batch.postprocessTimeMs,
+    workerTotalMs: workerClock.elapsedMicroseconds / 1000,
+  );
 }
 
 class CameraScreen extends StatefulWidget {
@@ -82,7 +154,8 @@ class CameraScreen extends StatefulWidget {
 class _CameraScreenState extends State<CameraScreen> {
   CameraController? _controller;
   final AIEngineService _engine = AIEngineService();
-  final Queue<DateTime> _completed = Queue<DateTime>();
+  final Stopwatch _fpsClock = Stopwatch();
+  int _completedFrames = 0;
   Timer? _fpsTimer;
   int _cameraIndex = 0, _generation = 0;
   bool _loading = false, _loaded = false, _running = false, _busy = false;
@@ -94,7 +167,6 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   void initState() {
     super.initState();
-    _fpsTimer = Timer.periodic(const Duration(seconds: 1), (_) => _refreshFps());
     if (widget.cameras.isEmpty) {
       _error = 'Không tìm thấy camera.';
     } else {
@@ -102,13 +174,33 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
+  // Average throughput since the stream started. Keeping the completed-frame
+  // count prevents FPS from falling to zero between very slow frames.
   void _refreshFps() {
-    if (!mounted) return;
-    final cutoff = DateTime.now().subtract(const Duration(seconds: 3));
-    while (_completed.isNotEmpty && _completed.first.isBefore(cutoff)) {
-      _completed.removeFirst();
-    }
-    setState(() => _fps = _running ? _completed.length / 3 : 0);
+    if (!mounted || !_running) return;
+    final elapsedUs = _fpsClock.elapsedMicroseconds;
+    if (elapsedUs <= 0) return;
+    final fps = _completedFrames * Duration.microsecondsPerSecond / elapsedUs;
+    setState(() => _fps = fps);
+  }
+
+  void _startFpsMeasurement() {
+    _resetFpsMeasurement();
+    _fpsClock.start();
+    _fpsTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => _refreshFps(),
+    );
+  }
+
+  // Call inside setState when the screen remains mounted.
+  void _resetFpsMeasurement() {
+    _fpsTimer?.cancel();
+    _fpsTimer = null;
+    _fpsClock.stop();
+    _fpsClock.reset();
+    _completedFrames = 0;
+    _fps = 0;
   }
 
   Future<void> _openCamera() async {
@@ -120,8 +212,7 @@ class _CameraScreenState extends State<CameraScreen> {
       _running = false;
       _error = null;
       _result = null;
-      _completed.clear();
-      _fps = 0;
+      _resetFpsMeasurement();
     });
     // Avoid opening a second camera while the old native inference is running.
     while (_busy) {
@@ -129,9 +220,12 @@ class _CameraScreenState extends State<CameraScreen> {
     }
     await old?.dispose();
     if (!mounted || generation != _generation) return;
-    final camera = CameraController(widget.cameras[_cameraIndex],
-        ResolutionPreset.medium, enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.yuv420);
+    final camera = CameraController(
+      widget.cameras[_cameraIndex],
+      ResolutionPreset.medium,
+      enableAudio: false,
+      imageFormatGroup: ImageFormatGroup.yuv420,
+    );
     try {
       await camera.initialize();
       if (!mounted || generation != _generation) {
@@ -148,10 +242,13 @@ class _CameraScreenState extends State<CameraScreen> {
       setState(() {
         _controller = camera;
         _running = wasRunning && _loaded;
+        if (_running) _startFpsMeasurement();
       });
     } catch (e) {
       await camera.dispose();
-      if (mounted && generation == _generation) setState(() => _error = 'Lỗi camera stream: $e');
+      if (mounted && generation == _generation) {
+        setState(() => _error = 'Lỗi camera stream: $e');
+      }
     }
   }
 
@@ -159,17 +256,32 @@ class _CameraScreenState extends State<CameraScreen> {
     if (!mounted || !_running || _busy || generation != _generation) return;
     _busy = true; // Keep only a new frame when the detector is idle.
     try {
+      final copyClock = Stopwatch()..start();
       final camera = widget.cameras[_cameraIndex];
-      final frame = _FrameData(image.width, image.height, camera.sensorOrientation,
-          camera.lensDirection == CameraLensDirection.front,
-          image.planes.map((p) => _PlaneData(
-            Uint8List.fromList(p.bytes), p.bytesPerRow, p.bytesPerPixel ?? 1,
-          )).toList());
+      final planes = image.planes
+          .map(
+            (p) => _PlaneData(
+              Uint8List.fromList(p.bytes),
+              p.bytesPerRow,
+              p.bytesPerPixel ?? 1,
+            ),
+          )
+          .toList();
+      copyClock.stop();
+      final frame = _FrameData(
+        image.width,
+        image.height,
+        camera.sensorOrientation,
+        camera.lensDirection == CameraLensDirection.front,
+        copyClock.elapsedMicroseconds / 1000,
+        planes,
+      );
       _processFrame(frame, generation);
     } catch (e) {
       _busy = false;
       setState(() {
         _running = false;
+        _resetFpsMeasurement();
         _error = 'Đọc frame thất bại: $e';
       });
     }
@@ -177,16 +289,28 @@ class _CameraScreenState extends State<CameraScreen> {
 
   Future<void> _processFrame(_FrameData frame, int generation) async {
     try {
-      final result = await compute(_detectFrame, frame);
+      final computeClock = Stopwatch()..start();
+      final workerResult = await compute(_detectFrame, frame);
+      computeClock.stop();
       if (!mounted || !_running || generation != _generation) return;
-      _completed.addLast(DateTime.now());
-      setState(() => _result = result);
-      _refreshFps();
+      final result = workerResult.withComputeRoundTrip(
+        computeClock.elapsedMicroseconds / 1000,
+      );
+      _completedFrames++;
+      final elapsedUs = _fpsClock.elapsedMicroseconds;
+      final fps = elapsedUs <= 0
+          ? 0.0
+          : _completedFrames * Duration.microsecondsPerSecond / elapsedUs;
+      setState(() {
+        _result = result;
+        _fps = fps;
+      });
     } catch (e, stack) {
       debugPrint('YOLO camera stream: $e\n$stack');
       if (mounted && generation == _generation) {
         setState(() {
           _running = false;
+          _resetFpsMeasurement();
           _error = 'Lỗi nhận diện: $e';
         });
       }
@@ -202,8 +326,7 @@ class _CameraScreenState extends State<CameraScreen> {
       setState(() {
         _running = false;
         _result = null;
-        _completed.clear();
-        _fps = 0;
+        _resetFpsMeasurement();
         _loading = true;
       });
       try {
@@ -222,18 +345,29 @@ class _CameraScreenState extends State<CameraScreen> {
     });
     try {
       if (!_loaded) {
-        final ok = await _engine.initializeYolo26Model(preferGpu: false);
+        // Prefer NCNN's Vulkan backend. The native engine falls back to CPU
+        // when Vulkan is unavailable or cannot be initialized.
+        final ok = await _engine.initializeYolo26Model(preferGpu: true);
         if (!mounted) return;
         if (!ok) {
-          setState(() => _modelError =
-              'Không load được YOLO26: ${_engine.lastModelLoadCode}');
+          setState(
+            () => _modelError =
+                'Không load được YOLO26: ${_engine.lastModelLoadCode}',
+          );
           return;
         }
         _loaded = true;
       }
       final generation = ++_generation;
-      await _controller!.startImageStream((image) => _onImage(image, generation));
-      if (mounted && generation == _generation) setState(() => _running = true);
+      await _controller!.startImageStream(
+        (image) => _onImage(image, generation),
+      );
+      if (mounted && generation == _generation) {
+        setState(() {
+          _running = true;
+          _startFpsMeasurement();
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => _modelError = 'Không bật được YOLO: $e');
     } finally {
@@ -245,7 +379,7 @@ class _CameraScreenState extends State<CameraScreen> {
   void dispose() {
     _generation++;
     _running = false;
-    _fpsTimer?.cancel();
+    _resetFpsMeasurement();
     if (_busy) {
       // Native net must remain loaded until the worker finishes.
       Future<void>(() async {
@@ -265,54 +399,115 @@ class _CameraScreenState extends State<CameraScreen> {
   Widget build(BuildContext context) {
     final controller = _controller;
     return Scaffold(
-      appBar: AppBar(title: const Text('EdgeAI YOLO26', style: TextStyle(fontSize: 18)),
-          actions: [
-            if (widget.cameras.length > 1)
-            IconButton(icon: const Icon(Icons.switch_camera), tooltip: 'Đổi camera',
-                onPressed: _loading || _busy ? null : () {
-                  _cameraIndex = (_cameraIndex + 1) % widget.cameras.length;
-                  _openCamera();
-                }),
-          ]),
+      appBar: AppBar(
+        title: const Text('EdgeAI YOLO26', style: TextStyle(fontSize: 18)),
+        actions: [
+          if (widget.cameras.length > 1)
+            IconButton(
+              icon: const Icon(Icons.switch_camera),
+              tooltip: 'Đổi camera',
+              onPressed: _loading || _busy
+                  ? null
+                  : () {
+                      _cameraIndex = (_cameraIndex + 1) % widget.cameras.length;
+                      _openCamera();
+                    },
+            ),
+        ],
+      ),
       body: _error != null
-          ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Text(_error!, textAlign: TextAlign.center),
-              TextButton(onPressed: _openCamera, child: const Text('Thử lại')),
-            ]))
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(_error!, textAlign: TextAlign.center),
+                  TextButton(
+                    onPressed: _openCamera,
+                    child: const Text('Thử lại'),
+                  ),
+                ],
+              ),
+            )
           : controller == null
-              ? const Center(child: CircularProgressIndicator())
-              : Column(children: [
-                  Expanded(child: Center(child: CameraPreview(controller,
-                    child: _result == null ? null : CustomPaint(
-                      painter: DetectionPainter(
-                        detections: _result!.detections,
-                        imageWidth: _result!.width,
-                        imageHeight: _result!.height,
-                      ),
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                Expanded(
+                  child: Center(
+                    child: CameraPreview(
+                      controller,
+                      child: _result == null
+                          ? null
+                          : CustomPaint(
+                              painter: DetectionPainter(
+                                detections: _result!.detections,
+                                imageWidth: _result!.width,
+                                imageHeight: _result!.height,
+                              ),
+                            ),
                     ),
-                  ))),
-                  SafeArea(top: false, child: Container(
-                    width: double.infinity, padding: const EdgeInsets.all(12),
+                  ),
+                ),
+                SafeArea(
+                  top: false,
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
                     color: Colors.black87,
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('YOLO: ${_fps.toStringAsFixed(1)} FPS',
-                          style: const TextStyle(color: Colors.lightGreenAccent,
-                              fontSize: 26, fontWeight: FontWeight.bold)),
-                      Text(_result == null ? 'Chưa có kết quả'
-                          : '${_result!.detections.length} vật thể • ${_result!.inferenceMs.toStringAsFixed(1)} ms suy luận',
-                          style: const TextStyle(color: Colors.white)),
-                      const SizedBox(height: 8),
-                      SizedBox(width: double.infinity, child: FilledButton(
-                        onPressed: _loading ? null : _toggleYolo,
-                        child: Text(_loading ? 'Đang chuyển trạng thái…'
-                            : _running ? 'YOLO đã hoạt động • Nhấn để tạm dừng'
-                            : 'YOLO đã tạm dừng • Nhấn để bật'),
-                      )),
-                      if (_modelError != null) Text(_modelError!,
-                          style: const TextStyle(color: Colors.redAccent)),
-                    ]),
-                  )),
-                ]),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'AI: ${_fps.toStringAsFixed(_fps < 1 ? 2 : 1)} FPS',
+                          style: const TextStyle(
+                            color: Colors.lightGreenAccent,
+                            fontSize: 26,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          'Thông lượng trung bình • ${_engine.yolo26BackendName}',
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                        Text(
+                          _result == null
+                              ? 'Chưa có kết quả'
+                              : '${_result!.detections.length} vật thể\n'
+                                    'Copy camera: ${_result!.cameraCopyMs.toStringAsFixed(1)} ms\n'
+                                    'YUV → RGB: ${_result!.yuvToRgbMs.toStringAsFixed(1)} ms\n'
+                                    'Isolate/transfer: ${_result!.isolateOverheadMs.toStringAsFixed(1)} ms\n'
+                                    'FFI/copy bộ nhớ: ${_result!.ffiOverheadMs.toStringAsFixed(1)} ms\n'
+                                    'Native resize/normalize: ${_result!.nativePreprocessMs.toStringAsFixed(1)} ms\n'
+                                    'NCNN inference: ${_result!.inferenceMs.toStringAsFixed(1)} ms\n'
+                                    'Native decode/NMS: ${_result!.nativePostprocessMs.toStringAsFixed(1)} ms\n'
+                                    'Tổng pipeline: ${_result!.pipelineTotalMs.toStringAsFixed(1)} ms',
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton(
+                            onPressed: _loading ? null : _toggleYolo,
+                            child: Text(
+                              _loading
+                                  ? 'Đang chuyển trạng thái…'
+                                  : _running
+                                  ? 'YOLO đã hoạt động • Nhấn để tạm dừng'
+                                  : 'YOLO đã tạm dừng • Nhấn để bật',
+                            ),
+                          ),
+                        ),
+                        if (_modelError != null)
+                          Text(
+                            _modelError!,
+                            style: const TextStyle(color: Colors.redAccent),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
     );
   }
 }

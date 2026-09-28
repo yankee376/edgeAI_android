@@ -13,7 +13,8 @@ public:
     ~Yolo26Engine();
     int load(const char* param, const char* bin, bool gpu);
     int detect(const uint8_t* rgb, int width, int height, std::vector<Yolo26Object>& result,
-               float threshold, float nms_threshold, float* time_ms);
+               float threshold, float nms_threshold, float* preprocess_ms,
+               float* inference_ms, float* postprocess_ms);
     void unload();
     bool is_loaded() const;
     bool is_using_gpu() const;

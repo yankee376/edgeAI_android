@@ -142,7 +142,10 @@ class AIEngineService {
   };
 
   Future<bool> initializeYolo26Model({bool preferGpu = false}) async {
-    if (!_bindings.isLoaded) { _lastModelLoadCode = -100; return false; }
+    if (!_bindings.isLoaded) {
+      _lastModelLoadCode = -100;
+      return false;
+    }
     ffi.Pointer<Utf8>? param;
     ffi.Pointer<Utf8>? bin;
     try {
@@ -150,7 +153,10 @@ class AIEngineService {
       param = files.paramPath.toNativeUtf8();
       bin = files.binPath.toNativeUtf8();
       _lastModelLoadCode = _bindings.loadYolo26Model(
-        param.cast<ffi.Char>(), bin.cast<ffi.Char>(), preferGpu);
+        param.cast<ffi.Char>(),
+        bin.cast<ffi.Char>(),
+        preferGpu,
+      );
       debugPrint('YOLO26 load result: $_lastModelLoadCode');
       return _lastModelLoadCode == 0 && _bindings.isYolo26ModelLoaded();
     } catch (error, stackTrace) {
@@ -164,31 +170,67 @@ class AIEngineService {
     }
   }
 
-  DetectionBatch detectYolo26({required typed.Uint8List rgbBytes,
-    required int width, required int height, double probabilityThreshold = 0.40,
-    double nmsThreshold = 0.50, int maxDetections = 100}) {
-    if (!_bindings.isYolo26ModelLoaded()) throw StateError('YOLO26 model is not loaded');
+  DetectionBatch detectYolo26({
+    required typed.Uint8List rgbBytes,
+    required int width,
+    required int height,
+    double probabilityThreshold = 0.40,
+    double nmsThreshold = 0.50,
+    int maxDetections = 100,
+  }) {
+    if (!_bindings.isYolo26ModelLoaded()) {
+      throw StateError('YOLO26 model is not loaded');
+    }
     if (width <= 0 || height <= 0 || rgbBytes.length != width * height * 3) {
       throw ArgumentError('Invalid RGB image dimensions or byte count');
     }
-    if (maxDetections <= 0) throw ArgumentError.value(maxDetections, 'maxDetections');
+    if (maxDetections <= 0) {
+      throw ArgumentError.value(maxDetections, 'maxDetections');
+    }
     final rgb = calloc<ffi.Uint8>(rgbBytes.length);
     final output = calloc<NativeDetection>(maxDetections);
-    final time = calloc<ffi.Float>();
+    final preprocessTime = calloc<ffi.Float>();
+    final inferenceTime = calloc<ffi.Float>();
+    final postprocessTime = calloc<ffi.Float>();
     try {
       rgb.asTypedList(rgbBytes.length).setAll(0, rgbBytes);
-      final count = _bindings.detectYolo26Image(rgbBytes: rgb, width: width,
-        height: height, probabilityThreshold: probabilityThreshold,
-        nmsThreshold: nmsThreshold, output: output, maxOutput: maxDetections,
-        inferenceTimeMs: time);
-      if (count < 0) throw StateError('YOLO26 inference failed with code $count');
-      return DetectionBatch(detections: List<Detection>.generate(count, (i) {
-        final d = output[i];
-        return Detection(classId: d.classId, confidence: d.confidence,
-          x: d.x, y: d.y, width: d.width, height: d.height);
-      }, growable: false), inferenceTimeMs: time.value);
+      final count = _bindings.detectYolo26Image(
+        rgbBytes: rgb,
+        width: width,
+        height: height,
+        probabilityThreshold: probabilityThreshold,
+        nmsThreshold: nmsThreshold,
+        output: output,
+        maxOutput: maxDetections,
+        preprocessTimeMs: preprocessTime,
+        inferenceTimeMs: inferenceTime,
+        postprocessTimeMs: postprocessTime,
+      );
+      if (count < 0) {
+        throw StateError('YOLO26 inference failed with code $count');
+      }
+      return DetectionBatch(
+        detections: List<Detection>.generate(count, (i) {
+          final d = output[i];
+          return Detection(
+            classId: d.classId,
+            confidence: d.confidence,
+            x: d.x,
+            y: d.y,
+            width: d.width,
+            height: d.height,
+          );
+        }, growable: false),
+        inferenceTimeMs: inferenceTime.value,
+        preprocessTimeMs: preprocessTime.value,
+        postprocessTimeMs: postprocessTime.value,
+      );
     } finally {
-      calloc.free(rgb); calloc.free(output); calloc.free(time);
+      calloc.free(rgb);
+      calloc.free(output);
+      calloc.free(preprocessTime);
+      calloc.free(inferenceTime);
+      calloc.free(postprocessTime);
     }
   }
 
