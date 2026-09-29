@@ -17,6 +17,21 @@ class CurrencyModelFiles {
   const CurrencyModelFiles({required this.paramPath, required this.binPath});
 }
 
+enum Yolo26Mode { fp16Vulkan, int8Cpu, fp16Cpu }
+
+extension Yolo26ModeLabel on Yolo26Mode {
+  String get label => switch (this) {
+    Yolo26Mode.fp16Vulkan => 'FP16 + Vulkan/GPU',
+    Yolo26Mode.int8Cpu => 'INT8 + CPU',
+    Yolo26Mode.fp16Cpu => 'FP16 + CPU',
+  };
+
+  String get assetPrefix => switch (this) {
+    Yolo26Mode.fp16Vulkan || Yolo26Mode.fp16Cpu => 'yolo26_fp16',
+    Yolo26Mode.int8Cpu => 'yolo26_int8',
+  };
+}
+
 class Yolo26ModelFiles {
   final String paramPath;
   final String binPath;
@@ -37,21 +52,23 @@ class ModelAssetService {
   static const String _currencyBinAsset =
       'assets/models/nanodet_currency.ncnn.bin';
 
-  Future<Yolo26ModelFiles> prepareYolo26Model() async {
+  Future<Yolo26ModelFiles> prepareYolo26Model(Yolo26Mode mode) async {
     final support = await getApplicationSupportDirectory();
     final directory = Directory('${support.path}/models');
     await directory.create(recursive: true);
-    // Cache version for the 640x640 FP16 export on the optimization branch.
-    final param = File(
-      '${directory.path}/yolo26_best_pt_640_fp16_v2.ncnn.param',
-    );
-    final bin = File('${directory.path}/yolo26_best_pt_640_fp16_v2.ncnn.bin');
+    final prefix = mode.assetPrefix;
+    final cacheVersion = mode == Yolo26Mode.int8Cpu
+        ? 'int8_risk_v3'
+        : 'fp16_benchmark_v1';
+    final stem = '${prefix}_640_$cacheVersion';
+    final param = File('${directory.path}/$stem.ncnn.param');
+    final bin = File('${directory.path}/$stem.ncnn.bin');
     await _copyAssetIfNeeded(
-      assetPath: 'assets/models/yolo26.ncnn.param',
+      assetPath: 'assets/models/$prefix.ncnn.param',
       destination: param,
     );
     await _copyAssetIfNeeded(
-      assetPath: 'assets/models/yolo26.ncnn.bin',
+      assetPath: 'assets/models/$prefix.ncnn.bin',
       destination: bin,
     );
     return Yolo26ModelFiles(paramPath: param.path, binPath: bin.path);

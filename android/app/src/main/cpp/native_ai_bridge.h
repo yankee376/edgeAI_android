@@ -98,7 +98,8 @@ AI_EXPORT int32_t detect_currency_image(
     int32_t max_output,
     float* inference_time_ms
 );
-AI_EXPORT int32_t load_yolo26_model(const char* param_path, const char* bin_path, int32_t use_gpu);
+// mode: 0 = FP16 + Vulkan preferred, 1 = INT8 CPU, 2 = FP16 CPU.
+AI_EXPORT int32_t load_yolo26_model(const char* param_path, const char* bin_path, int32_t mode);
 AI_EXPORT int32_t is_yolo26_model_loaded(void);
 AI_EXPORT int32_t get_yolo26_backend(void);
 AI_EXPORT int32_t get_yolo26_cpu_core_count(void);

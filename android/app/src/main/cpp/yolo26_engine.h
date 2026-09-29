@@ -11,7 +11,8 @@ struct Yolo26Object {
 class Yolo26Engine {
 public:
     ~Yolo26Engine();
-    int load(const char* param, const char* bin, bool gpu);
+    // 0 = FP16 weights + Vulkan when available, 1 = INT8 CPU, 2 = FP16 weights CPU.
+    int load(const char* param, const char* bin, int mode);
     int detect(const uint8_t* rgb, int width, int height, std::vector<Yolo26Object>& result,
                float threshold, float nms_threshold, float* preprocess_ms,
                float* inference_ms, float* postprocess_ms);

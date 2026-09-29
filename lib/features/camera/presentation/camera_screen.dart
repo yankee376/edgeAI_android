@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../ai_engine/domain/detection.dart';
 import '../../ai_engine/services/ai_engine_service.dart';
+import '../../ai_engine/services/model_asset_service.dart';
 import 'detection_painter.dart';
 
 // CameraImage is a plugin object. Send copies of its YUV planes to the worker.
@@ -163,6 +164,7 @@ class _CameraScreenState extends State<CameraScreen> {
   String? _modelError;
   double _fps = 0;
   _DetectionFrame? _result;
+  Yolo26Mode _selectedMode = Yolo26Mode.fp16Vulkan;
 
   @override
   void initState() {
@@ -319,6 +321,40 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
+  Future<void> _selectMode(Yolo26Mode? mode) async {
+    if (mode == null || mode == _selectedMode || _loading || _busy) return;
+    final wasRunning = _running;
+    ++_generation;
+    setState(() {
+      _loading = true;
+      _running = false;
+      _result = null;
+      _resetFpsMeasurement();
+      _modelError = null;
+    });
+    try {
+      if (wasRunning) await _controller?.stopImageStream();
+      while (_busy) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      _engine.unloadYolo26Model();
+      _loaded = false;
+      if (mounted) setState(() => _selectedMode = mode);
+      final ok = await _engine.initializeYolo26Model(mode: mode);
+      if (!mounted) return;
+      setState(() {
+        _loaded = ok;
+        if (!ok) {
+          _modelError = 'Không load được model: ${_engine.lastModelLoadCode}';
+        }
+      });
+    } catch (e) {
+      if (mounted) setState(() => _modelError = 'Đổi chế độ thất bại: $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
   Future<void> _toggleYolo() async {
     if (_loading || _controller == null || _error != null) return;
     if (_running) {
@@ -345,9 +381,7 @@ class _CameraScreenState extends State<CameraScreen> {
     });
     try {
       if (!_loaded) {
-        // Prefer NCNN's Vulkan backend. The native engine falls back to CPU
-        // when Vulkan is unavailable or cannot be initialized.
-        final ok = await _engine.initializeYolo26Model(preferGpu: true);
+        final ok = await _engine.initializeYolo26Model(mode: _selectedMode);
         if (!mounted) return;
         if (!ok) {
           setState(
@@ -465,25 +499,48 @@ class _CameraScreenState extends State<CameraScreen> {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
+                        const SizedBox(height: 4),
+                        DropdownButtonFormField<Yolo26Mode>(
+                          initialValue: _selectedMode,
+                          decoration: const InputDecoration(
+                            labelText: 'Chế độ benchmark',
+                            isDense: true,
+                            filled: true,
+                            fillColor: Colors.white10,
+                            border: OutlineInputBorder(),
+                            labelStyle: TextStyle(color: Colors.white70),
+                          ),
+                          dropdownColor: Colors.black87,
+                          style: const TextStyle(color: Colors.white),
+                          items: Yolo26Mode.values
+                              .map(
+                                (mode) => DropdownMenuItem(
+                                  value: mode,
+                                  child: Text(mode.label),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: _loading || _busy ? null : _selectMode,
+                        ),
                         Text(
-                          'Backend: ${_engine.yolo26BackendName}'
-                          '${_engine.yolo26Backend == 1 ? ' • ${_engine.yolo26GpuName}' : ''}',
+                          'Backend đang chạy: ${_loaded ? _engine.yolo26BackendName : 'chưa nạp'}'
+                          '${_loaded && _engine.yolo26Backend == 1 ? ' • ${_engine.yolo26GpuName}' : ''}',
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                        Text(
+                          'Chế độ chọn: ${_selectedMode.label}'
+                          '${_selectedMode == Yolo26Mode.fp16Vulkan && _loaded && _engine.yolo26Backend != 1 ? ' • Vulkan không khả dụng, đang fallback CPU' : ''}',
                           style: const TextStyle(color: Colors.white70),
                         ),
                         Text(
                           'CPU: ${_engine.yolo26CpuCoreCount} lõi • '
                           '${_engine.yolo26CpuThreadCount} luồng NCNN'
-                          ' • GPU Vulkan: ${_engine.yolo26GpuCount} thiết bị',
+                          ' • Vulkan: ${_engine.yolo26GpuCount} thiết bị',
                           style: const TextStyle(color: Colors.white70),
                         ),
-                        const Text(
-                          'Model: YOLO26n • input 640×640 • trọng số FP16',
-                          style: TextStyle(color: Colors.white70),
-                        ),
                         Text(
-                          _engine.yolo26Backend == 1
-                              ? 'NCNN chạy layer hỗ trợ Vulkan trên GPU; CPU xử lý phần còn lại.'
-                              : 'Vulkan không hoạt động; model đang chạy trên CPU.',
+                          'Model: YOLO26n • 640×640 • '
+                          '${_selectedMode == Yolo26Mode.int8Cpu ? 'INT8 PTQ' : 'FP16 weights'}',
                           style: const TextStyle(color: Colors.white70),
                         ),
                         Text(

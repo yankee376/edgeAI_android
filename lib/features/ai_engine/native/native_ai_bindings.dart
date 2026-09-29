@@ -451,8 +451,8 @@ class NativeAIBindings {
   int loadYolo26Model(
     ffi.Pointer<ffi.Char> param,
     ffi.Pointer<ffi.Char> bin,
-    bool gpu,
-  ) => _isLoaded ? _loadYolo26Model(param, bin, gpu ? 1 : 0) : -100;
+    int mode,
+  ) => _isLoaded ? _loadYolo26Model(param, bin, mode) : -100;
   bool isYolo26ModelLoaded() => _isLoaded && _isYolo26ModelLoaded() == 1;
   int getYolo26Backend() => _isLoaded ? _getYolo26Backend() : -1;
   int getYolo26CpuThreadCount() => _isLoaded ? _getYolo26CpuThreads() : 0;

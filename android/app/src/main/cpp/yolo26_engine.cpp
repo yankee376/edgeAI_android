@@ -32,13 +32,14 @@ float overlap(const Box& a, const Box& b) {
 }
 }
 Yolo26Engine::~Yolo26Engine() { unload(); }
-int Yolo26Engine::load(const char* param, const char* bin, bool gpu) {
+int Yolo26Engine::load(const char* param, const char* bin, int mode) {
     std::lock_guard<std::mutex> guard(mutex_);
     net_.clear(); loaded_ = false; gpu_ = false;
     cpu_core_count_ = ncnn::get_cpu_count();
     if (cpu_core_count_ < 1) cpu_core_count_ = 1;
     cpu_thread_count_ = 1;
     if (!param || !bin) return -1;
+    if (mode < 0 || mode > 2) return -4;
     cpu_thread_count_ = ncnn::get_big_cpu_count();
     if (cpu_thread_count_ < 1) cpu_thread_count_ = ncnn::get_cpu_count();
     if (cpu_thread_count_ < 1) cpu_thread_count_ = 1;
@@ -47,16 +48,15 @@ int Yolo26Engine::load(const char* param, const char* bin, bool gpu) {
     net_.opt = ncnn::Option();
     net_.opt.num_threads = cpu_thread_count_;
 #if NCNN_VULKAN
-    gpu_ = gpu && has_vulkan_gpu();
+    gpu_ = mode == 0 && has_vulkan_gpu();
     net_.opt.use_vulkan_compute = gpu_;
-    // The 640x640 NCNN export stores weights in FP16. Use Mali's FP16 Vulkan
-    // path when available; operators that require FP32 retain NCNN fallback.
     net_.opt.use_fp16_packed = gpu_;
     net_.opt.use_fp16_storage = gpu_;
     net_.opt.use_fp16_arithmetic = gpu_;
 #else
-    (void)gpu;
+    gpu_ = false;
 #endif
+    net_.opt.use_int8_inference = mode == 1;
     if (net_.load_param(param) != 0) { net_.clear(); gpu_ = false; return -2; }
     if (net_.load_model(bin) != 0) { net_.clear(); gpu_ = false; return -3; }
     loaded_ = true;

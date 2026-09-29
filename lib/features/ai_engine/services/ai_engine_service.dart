@@ -145,7 +145,7 @@ class AIEngineService {
     _ => 'Not loaded',
   };
 
-  Future<bool> initializeYolo26Model({bool preferGpu = false}) async {
+  Future<bool> initializeYolo26Model({required Yolo26Mode mode}) async {
     if (!_bindings.isLoaded) {
       _lastModelLoadCode = -100;
       return false;
@@ -153,13 +153,13 @@ class AIEngineService {
     ffi.Pointer<Utf8>? param;
     ffi.Pointer<Utf8>? bin;
     try {
-      final files = await _modelAssetService.prepareYolo26Model();
+      final files = await _modelAssetService.prepareYolo26Model(mode);
       param = files.paramPath.toNativeUtf8();
       bin = files.binPath.toNativeUtf8();
       _lastModelLoadCode = _bindings.loadYolo26Model(
         param.cast<ffi.Char>(),
         bin.cast<ffi.Char>(),
-        preferGpu,
+        mode.index,
       );
       debugPrint('YOLO26 load result: $_lastModelLoadCode');
       return _lastModelLoadCode == 0 && _bindings.isYolo26ModelLoaded();

@@ -21,8 +21,8 @@ Yolo26Engine g_yolo26_engine;
 }
 
 extern "C" {
-AI_EXPORT int32_t load_yolo26_model(const char* param, const char* bin, int32_t gpu) {
-    return g_yolo26_engine.load(param, bin, gpu == 1);
+AI_EXPORT int32_t load_yolo26_model(const char* param, const char* bin, int32_t mode) {
+    return g_yolo26_engine.load(param, bin, mode);
 }
 AI_EXPORT int32_t is_yolo26_model_loaded(void) { return g_yolo26_engine.is_loaded() ? 1 : 0; }
 AI_EXPORT int32_t get_yolo26_backend(void) {
