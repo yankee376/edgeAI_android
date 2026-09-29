@@ -49,6 +49,11 @@ int Yolo26Engine::load(const char* param, const char* bin, bool gpu) {
 #if NCNN_VULKAN
     gpu_ = gpu && has_vulkan_gpu();
     net_.opt.use_vulkan_compute = gpu_;
+    // The 640x640 NCNN export stores weights in FP16. Use Mali's FP16 Vulkan
+    // path when available; operators that require FP32 retain NCNN fallback.
+    net_.opt.use_fp16_packed = gpu_;
+    net_.opt.use_fp16_storage = gpu_;
+    net_.opt.use_fp16_arithmetic = gpu_;
 #else
     (void)gpu;
 #endif

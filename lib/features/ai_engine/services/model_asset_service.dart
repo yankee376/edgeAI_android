@@ -41,11 +41,11 @@ class ModelAssetService {
     final support = await getApplicationSupportDirectory();
     final directory = Directory('${support.path}/models');
     await directory.create(recursive: true);
-    // Versioned paths prevent a stale file from another model export being reused.
-    // Use a new cache name when model weights change so installed apps do not
-    // keep loading an older model copied by a previous version.
-    final param = File('${directory.path}/yolo26_best_pt_v1.ncnn.param');
-    final bin = File('${directory.path}/yolo26_best_pt_v1.ncnn.bin');
+    // Cache version for the 640x640 FP16 export on the optimization branch.
+    final param = File(
+      '${directory.path}/yolo26_best_pt_640_fp16_v2.ncnn.param',
+    );
+    final bin = File('${directory.path}/yolo26_best_pt_640_fp16_v2.ncnn.bin');
     await _copyAssetIfNeeded(
       assetPath: 'assets/models/yolo26.ncnn.param',
       destination: param,
