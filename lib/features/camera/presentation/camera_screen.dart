@@ -476,6 +476,10 @@ class _CameraScreenState extends State<CameraScreen> {
                           ' • GPU Vulkan: ${_engine.yolo26GpuCount} thiết bị',
                           style: const TextStyle(color: Colors.white70),
                         ),
+                        const Text(
+                          'Model: YOLO26n • input 416×416 • trọng số FP16',
+                          style: TextStyle(color: Colors.white70),
+                        ),
                         Text(
                           _engine.yolo26Backend == 1
                               ? 'NCNN chạy layer hỗ trợ Vulkan trên GPU; CPU xử lý phần còn lại.'

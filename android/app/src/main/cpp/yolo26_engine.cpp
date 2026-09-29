@@ -49,6 +49,11 @@ int Yolo26Engine::load(const char* param, const char* bin, bool gpu) {
 #if NCNN_VULKAN
     gpu_ = gpu && has_vulkan_gpu();
     net_.opt.use_vulkan_compute = gpu_;
+    // The updated NCNN export stores weights in FP16. Use Mali's FP16 Vulkan
+    // path when available; NCNN retains FP32 for operators that require it.
+    net_.opt.use_fp16_packed = gpu_;
+    net_.opt.use_fp16_storage = gpu_;
+    net_.opt.use_fp16_arithmetic = gpu_;
 #else
     (void)gpu;
 #endif
@@ -102,8 +107,10 @@ int Yolo26Engine::detect(const uint8_t* rgb, int width, int height,
         !std::isfinite(nms_threshold) || threshold < 0 || threshold > 1 ||
         nms_threshold < 0 || nms_threshold > 1) return -2;
     const auto start = std::chrono::steady_clock::now();
-    constexpr int input_size = 640;
-    const float scale = std::min(640.f / width, 640.f / height);
+    // assets/models/yolo26.ncnn.* is exported specifically for 416x416.
+    constexpr int input_size = 416;
+    const float scale = std::min(float(input_size) / width,
+                                 float(input_size) / height);
     const int rw = std::max(1, std::min(input_size, static_cast<int>(std::round(width*scale))));
     const int rh = std::max(1, std::min(input_size, static_cast<int>(std::round(height*scale))));
     const int left = (input_size-rw)/2, top = (input_size-rh)/2;
@@ -122,8 +129,9 @@ int Yolo26Engine::detect(const uint8_t* rgb, int width, int height,
     const auto preprocess_end = std::chrono::steady_clock::now();
     if (ex.extract("out0",out) != 0) return -3;
     const auto infer_end = std::chrono::steady_clock::now();
-    // Export shape: [1, 103, 8400]. Four first rows are cx, cy, w, h.
-    if (out.dims != 2 || out.h != 103 || out.w != 8400 || out.elemsize != 4) return -5;
+    // 416 input: 52^2 + 26^2 + 13^2 = 3549 points. Output is
+    // [1, 103, 3549]; the first four rows are cx, cy, w, h.
+    if (out.dims != 2 || out.h != 103 || out.w != 3549 || out.elemsize != 4) return -5;
     std::vector<Box> boxes;
     const float* cx = out.row(0), *cy = out.row(1);
     const float* bw = out.row(2), *bh = out.row(3);
