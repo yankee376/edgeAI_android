@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" />
     <uses-feature android:name="android.hardware.camera.autofocus" />
@@ -6,6 +7,17 @@
         android:label="EdgeAI LiteRT 640"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!-- The LiteRT camera benchmark does not schedule WorkManager jobs. Its
+             transitive startup initializer crashes before Flutter starts on
+             this release build, so omit only that initializer. -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                tools:node="remove" />
+        </provider>
         <activity
             android:name=".MainActivity"
             android:exported="true"
