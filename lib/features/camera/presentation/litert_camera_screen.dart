@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
-/// Isolated 640x640 LiteRT camera baseline for comparing against the NCNN app.
+/// Isolated 416x416 LiteRT camera baseline for comparing against the 640 app.
 class LiteRtCameraScreen extends StatefulWidget {
   const LiteRtCameraScreen({super.key});
 
@@ -12,7 +12,7 @@ class LiteRtCameraScreen extends StatefulWidget {
 }
 
 class _LiteRtCameraScreenState extends State<LiteRtCameraScreen> {
-  static const _modelPath = 'assets/models/best_w8a32.tflite';
+  static const _modelPath = 'assets/models/best_416_w8a32.tflite';
 
   final YOLOViewController _controller = YOLOViewController();
   final Stopwatch _fpsClock = Stopwatch();
@@ -100,7 +100,7 @@ class _LiteRtCameraScreenState extends State<LiteRtCameraScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('EdgeAI • LiteRT 640'),
+        title: const Text('EdgeAI • LiteRT 416'),
         actions: [
           IconButton(
             tooltip: 'Đặt lại bộ đếm FPS',
@@ -160,7 +160,7 @@ class _LiteRtCameraScreenState extends State<LiteRtCameraScreen> {
                     style: const TextStyle(color: Colors.white70),
                   ),
                   const Text(
-                    'Model: YOLO26n • 99 class • 640×640 • W8A32',
+                    'Model: YOLO26n • 99 class • 416×416 • W8A32',
                     style: TextStyle(color: Colors.white70),
                   ),
                   Text(

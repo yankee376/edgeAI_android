@@ -16,7 +16,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.android_ai_gateway"
-        applicationIdSuffix = ".litert"
+        applicationIdSuffix = ".litert416"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

@@ -4,7 +4,7 @@
     <uses-feature android:name="android.hardware.camera" />
     <uses-feature android:name="android.hardware.camera.autofocus" />
     <application
-        android:label="EdgeAI LiteRT 640"
+        android:label="EdgeAI LiteRT 416"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <!-- The LiteRT camera benchmark does not schedule WorkManager jobs. Its
