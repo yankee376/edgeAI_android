@@ -38,6 +38,8 @@ dependencies:
   ffi: ^2.2.0
   path_provider: ^2.1.6
   image: ^4.9.1
+  ultralytics_yolo:
+    path: third_party/ultralytics_yolo
 
 dev_dependencies:
   flutter_test:
@@ -100,3 +102,4 @@ flutter:
     - assets/models/yolo26_int8.ncnn.bin
     - assets/models/yolo26_fp16.ncnn.param
     - assets/models/yolo26_fp16.ncnn.bin
+    - assets/models/best_w8a32.tflite

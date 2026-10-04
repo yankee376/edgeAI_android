@@ -65,8 +65,13 @@ app.*.map.json
 /build/
 /.dart_tool/
 /android/.gradle/
+/android/.kotlin/
 /android/local.properties
 *.apk
+
+# Local model export environment and source checkpoint (the app bundles TFLite).
+/.export_deps/
+/assets/models/best.pt
 
 # Downloaded native SDKs are large and machine-local
 /android/app/src/main/cpp/ncnn/

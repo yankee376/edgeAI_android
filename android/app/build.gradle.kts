@@ -16,16 +16,11 @@ android {
 
     defaultConfig {
         applicationId = "com.example.android_ai_gateway"
+        applicationIdSuffix = ".litert"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-    }
-
-    externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
-        }
     }
 
     buildTypes {

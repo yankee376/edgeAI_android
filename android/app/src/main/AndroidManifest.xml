@@ -3,7 +3,7 @@
     <uses-feature android:name="android.hardware.camera" />
     <uses-feature android:name="android.hardware.camera.autofocus" />
     <application
-        android:label="android_ai_gateway"
+        android:label="EdgeAI LiteRT 640"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

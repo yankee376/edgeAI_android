@@ -1,20 +1,17 @@
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'core/theme/app_theme.dart';
-import 'features/camera/presentation/camera_screen.dart';
+import 'features/camera/presentation/litert_camera_screen.dart';
 
 class AndroidAIGatewayApp extends StatelessWidget {
-  final List<CameraDescription> cameras;
-
-  const AndroidAIGatewayApp({super.key, required this.cameras});
+  const AndroidAIGatewayApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Android AI Gateway',
+      title: 'EdgeAI LiteRT 640',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
-      home: CameraScreen(cameras: cameras),
+      home: const LiteRtCameraScreen(),
     );
   }
 }
