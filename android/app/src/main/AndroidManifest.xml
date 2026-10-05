@@ -7,6 +7,8 @@
         android:label="EdgeAI LiteRT 640"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <uses-native-library android:name="libvndksupport.so" android:required="false" />
+        <uses-native-library android:name="libOpenCL.so" android:required="false" />
         <!-- The LiteRT camera benchmark does not schedule WorkManager jobs. Its
              transitive startup initializer crashes before Flutter starts on
              this release build, so omit only that initializer. -->
@@ -52,6 +54,9 @@
 
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>

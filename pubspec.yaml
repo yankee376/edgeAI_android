@@ -103,3 +103,4 @@ flutter:
     - assets/models/yolo26_fp16.ncnn.param
     - assets/models/yolo26_fp16.ncnn.bin
     - assets/models/best_w8a32.tflite
+    - assets/models/vosk-model-small-vn-0.4.zip

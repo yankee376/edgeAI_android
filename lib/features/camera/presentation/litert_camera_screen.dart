@@ -1,7 +1,10 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
+
+import 'detection_assistant_sheet.dart';
 
 /// Isolated 640x640 LiteRT camera baseline for comparing against the NCNN app.
 class LiteRtCameraScreen extends StatefulWidget {
@@ -13,18 +16,155 @@ class LiteRtCameraScreen extends StatefulWidget {
 
 class _LiteRtCameraScreenState extends State<LiteRtCameraScreen> {
   static const _modelPath = 'assets/models/best_w8a32.tflite';
+  static const _llmChannel = MethodChannel('edgeai/litertlm');
 
   final YOLOViewController _controller = YOLOViewController();
   final Stopwatch _fpsClock = Stopwatch();
   Map<String, dynamic>? _lastFrame;
   DateTime? _lastUiUpdate;
   String? _error;
+  String? _llmModelPath;
+  String? _llmError;
   bool _loaded = false;
+  bool _llmBusy = false;
+  bool _llmReady = false;
   bool _paused = false;
   int _completedFrames = 0;
   double _averageFps = 0;
+  double _llmLoadMs = 0;
 
   double _number(String key) => (_lastFrame?[key] as num?)?.toDouble() ?? 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreLlmModelPath();
+  }
+
+  Future<void> _restoreLlmModelPath() async {
+    try {
+      final path = await _llmChannel.invokeMethod<String>('getModelPath');
+      if (mounted && path != null) setState(() => _llmModelPath = path);
+    } on PlatformException catch (error) {
+      if (mounted) setState(() => _llmError = error.message);
+    }
+  }
+
+  Future<Map<String, dynamic>?> _selectAndLoadLlm() async {
+    if (_llmBusy) return null;
+    setState(() {
+      _llmBusy = true;
+      _llmError = null;
+      _llmReady = false;
+    });
+    try {
+      final path = await _llmChannel.invokeMethod<String>('pickModel');
+      if (path == null) return null;
+      if (mounted) setState(() => _llmModelPath = path);
+      final loaded = await _llmChannel.invokeMapMethod<String, dynamic>(
+        'loadModel',
+        {'path': path},
+      );
+      if (!mounted) return null;
+      setState(() {
+        _llmReady = true;
+        _llmLoadMs = (loaded?['loadMs'] as num?)?.toDouble() ?? 0;
+      });
+      return loaded;
+    } on PlatformException catch (error) {
+      if (mounted) setState(() => _llmError = error.message ?? error.code);
+      return null;
+    } catch (error) {
+      if (mounted) setState(() => _llmError = error.toString());
+      return null;
+    } finally {
+      if (mounted) setState(() => _llmBusy = false);
+    }
+  }
+
+  Future<Map<String, dynamic>?> _loadSavedLlm() async {
+    final path = _llmModelPath;
+    if (path == null || _llmBusy) return null;
+    setState(() {
+      _llmBusy = true;
+      _llmError = null;
+      _llmReady = false;
+    });
+    try {
+      final loaded = await _llmChannel.invokeMapMethod<String, dynamic>(
+        'loadModel',
+        {'path': path},
+      );
+      if (!mounted) return null;
+      setState(() {
+        _llmReady = true;
+        _llmLoadMs = (loaded?['loadMs'] as num?)?.toDouble() ?? 0;
+      });
+      return loaded;
+    } on PlatformException catch (error) {
+      if (mounted) setState(() => _llmError = error.message ?? error.code);
+      return null;
+    } catch (error) {
+      if (mounted) setState(() => _llmError = error.toString());
+      return null;
+    } finally {
+      if (mounted) setState(() => _llmBusy = false);
+    }
+  }
+
+  Future<Map<String, dynamic>> _generateLlm(String prompt) async {
+    return await _llmChannel.invokeMapMethod<String, dynamic>('generate', {
+          'prompt': prompt,
+        }) ??
+        const <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>?> _pickAudioAndTranscribe() async {
+    return await _llmChannel.invokeMapMethod<String, dynamic>(
+      'pickAudioAndTranscribe',
+    );
+  }
+
+  Future<Map<String, dynamic>> _speakAnswer(String text) async {
+    return await _llmChannel.invokeMapMethod<String, dynamic>('speak', {
+          'text': text,
+        }) ??
+        const <String, dynamic>{};
+  }
+
+  Future<void> _stopSpeaking() =>
+      _llmChannel.invokeMethod<void>('stopSpeaking');
+
+  Future<Map<String, dynamic>> _getVoiceCapabilities() async {
+    return await _llmChannel.invokeMapMethod<String, dynamic>(
+          'voiceCapabilities',
+        ) ??
+        const <String, dynamic>{};
+  }
+
+  void _openAssistant() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => DetectionAssistantSheet(
+        getDetections: () =>
+            (_lastFrame?['detections'] as List<dynamic>?) ?? const [],
+        loaded: _llmReady,
+        busy: _llmBusy,
+        modelPath: _llmModelPath,
+        loadMs: _llmLoadMs,
+        error: _llmError,
+        onSelectAndLoad: _selectAndLoadLlm,
+        onLoadSaved: _loadSavedLlm,
+        onGenerate: _generateLlm,
+        onPickAudioAndTranscribe: _pickAudioAndTranscribe,
+        onSpeak: _speakAnswer,
+        onStopSpeaking: _stopSpeaking,
+        getVoiceCapabilities: _getVoiceCapabilities,
+      ),
+    );
+  }
 
   void _resetCounter() {
     _fpsClock
@@ -40,6 +180,8 @@ class _LiteRtCameraScreenState extends State<LiteRtCameraScreen> {
 
   void _onFrame(Map<String, dynamic> data) {
     if (!mounted || _paused) return;
+    // Keep the freshest detection snapshot even when UI/FPS updates are throttled.
+    _lastFrame = data;
     if (!_fpsClock.isRunning) _fpsClock.start();
     _completedFrames++;
     final now = DateTime.now();
@@ -51,10 +193,7 @@ class _LiteRtCameraScreenState extends State<LiteRtCameraScreen> {
     final seconds =
         _fpsClock.elapsedMicroseconds / Duration.microsecondsPerSecond;
     setState(() {
-      _lastFrame = data;
-      _averageFps = seconds > 0 && _completedFrames > 1
-          ? (_completedFrames - 1) / seconds
-          : 0;
+      _averageFps = seconds > 0 ? _completedFrames / seconds : 0;
     });
   }
 
@@ -102,6 +241,11 @@ class _LiteRtCameraScreenState extends State<LiteRtCameraScreen> {
       appBar: AppBar(
         title: const Text('EdgeAI • LiteRT 640'),
         actions: [
+          IconButton(
+            tooltip: 'Hỏi Gemma dựa trên kết quả YOLO hiện tại',
+            onPressed: _openAssistant,
+            icon: const Icon(Icons.chat_outlined),
+          ),
           IconButton(
             tooltip: 'Đặt lại bộ đếm FPS',
             onPressed: _resetCounter,
@@ -181,7 +325,7 @@ class _LiteRtCameraScreenState extends State<LiteRtCameraScreen> {
                   _stage('Tổng detector', modelMs),
                   _stage('Tổng phần đã đo', measuredMs),
                   const Text(
-                    'Đối chứng camera điện thoại; chưa chạy Pi, LLM, cảnh báo.',
+                    'YOLO tiếp tục chạy độc lập; LLM chỉ chạy khi người dùng gửi câu hỏi.',
                     style: TextStyle(color: Colors.white54, fontSize: 11),
                   ),
                   if (_error != null)
