@@ -24,6 +24,7 @@ class YOLOInference {
     Uint8List imageBytes, {
     double? confidenceThreshold,
     double? iouThreshold,
+    int rotationDegrees = 0,
   }) async {
     if (imageBytes.isEmpty) {
       throw InvalidInputException('Image data is empty');
@@ -38,9 +39,15 @@ class YOLOInference {
     if (iouThreshold != null && (iouThreshold < 0.0 || iouThreshold > 1.0)) {
       throw InvalidInputException('IoU threshold must be between 0.0 and 1.0');
     }
+    if (rotationDegrees != 0 && rotationDegrees != 180) {
+      throw InvalidInputException('Rotation must be 0 or 180 degrees');
+    }
 
     try {
-      final Map<String, dynamic> arguments = {'image': imageBytes};
+      final Map<String, dynamic> arguments = {
+        'image': imageBytes,
+        'rotationDegrees': rotationDegrees,
+      };
 
       if (confidenceThreshold != null) {
         arguments['confidenceThreshold'] = confidenceThreshold;
@@ -292,7 +299,7 @@ class YOLOInference {
 
   Map<String, dynamic> _createDetectionMap(Map<String, dynamic> box) {
     return {
-      'classIndex': 0,
+      'classIndex': MapConverter.safeGetInt(box, 'classIndex'),
       'className': MapConverter.safeGetString(box, 'class'),
       'confidence': MapConverter.safeGetDouble(box, 'confidence'),
       'boundingBox': {

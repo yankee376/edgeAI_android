@@ -231,6 +231,7 @@ class YOLO {
   /// [imageBytes] The raw image data as a Uint8List
   /// [confidenceThreshold] Optional confidence threshold (0.0-1.0). Defaults to 0.25 if not specified.
   /// [iouThreshold] Optional IoU threshold for NMS (0.0-1.0). Defaults to 0.7 if not specified.
+  /// [rotationDegrees] Rotate a decoded image before inference on Android (0 or 180).
   /// returns A map containing:
   ///   - 'boxes': List of bounding boxes
   ///   - 'detections': List of YOLOResult-compatible detection maps
@@ -241,6 +242,7 @@ class YOLO {
     Uint8List imageBytes, {
     double? confidenceThreshold,
     double? iouThreshold,
+    int rotationDegrees = 0,
   }) async {
     if (!_isInitialized) {
       final success = await loadModel();
@@ -254,6 +256,7 @@ class YOLO {
       imageBytes,
       confidenceThreshold: confidenceThreshold,
       iouThreshold: iouThreshold,
+      rotationDegrees: rotationDegrees,
     );
   }
 
