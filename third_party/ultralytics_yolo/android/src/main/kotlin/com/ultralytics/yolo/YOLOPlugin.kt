@@ -5,6 +5,7 @@ package com.ultralytics.yolo
 import android.app.Activity
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
 import android.graphics.RectF
 import android.util.Log
 import androidx.annotation.NonNull
@@ -195,6 +196,7 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
           val imageData = args?.get("image") as? ByteArray
           val confidenceThreshold = args?.get("confidenceThreshold") as? Double
           val iouThreshold = args?.get("iouThreshold") as? Double
+          val rotationDegrees = args?.get("rotationDegrees") as? Int ?: 0
           val instanceId = args?.get("instanceId") as? String ?: "default"
 
           if (imageData == null) {
@@ -203,10 +205,25 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
           }
           
           // Convert byte array to bitmap
-          val bitmap = BitmapFactory.decodeByteArray(imageData, 0, imageData.size)
-          if (bitmap == null) {
+          val decodedBitmap = BitmapFactory.decodeByteArray(imageData, 0, imageData.size)
+          if (decodedBitmap == null) {
             result.error("image_error", "Failed to decode image", null)
             return
+          }
+          val bitmap = try {
+            if (rotationDegrees == 180) {
+              Bitmap.createBitmap(
+                decodedBitmap, 0, 0, decodedBitmap.width, decodedBitmap.height,
+                Matrix().apply { postRotate(180f) }, true
+              ).also { rotated ->
+                if (rotated !== decodedBitmap) decodedBitmap.recycle()
+              }
+            } else {
+              decodedBitmap
+            }
+          } catch (e: Exception) {
+            decodedBitmap.recycle()
+            throw e
           }
 
           try {
@@ -241,6 +258,7 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
                 "y1_norm" to box.xywh.top / imageHeight,
                 "x2_norm" to box.xywh.right / imageWidth,
                 "y2_norm" to box.xywh.bottom / imageHeight,
+                "classIndex" to box.index,
                 "class" to box.cls,
                 "className" to box.cls, // Add className for compatibility with YOLOResult
                 "confidence" to box.conf
